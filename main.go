@@ -28,6 +28,7 @@ func main () {
 	//println (scm.NewList (scm.NewSymbol("+"), 1, 2))
 
 	// Evaluate
-	env := scm.NewEnvironment(nil)
+	env := scm.NewEnvironment()
+	env.Init ()
 	println (env.Eval(expr).String())
 }

@@ -8,35 +8,14 @@ import (
 
 //////////////////////////////////////////////////// Basic Types /////
 
-/*
-type typeid byte
-
-const (
-	_ typeid = iota
-	unspecified_id
-	integer_id
-	rational_id
-	real_id
-	complex_id
-	symbol_id
-	char_id
-	string_id
-	boolean_id
-	pair_id
-	empty_id
-	vector_id
-	port_id
-	procedure_id
-)
-*/
-
 type AnyGo interface {}
 
 type Value interface {
-	//typeid () typeid
 	String () string
 	scm ()
 }
+
+type Func func (args ...Value) Value
 
 func NewValue (arg AnyGo) Value {
 	var result Value
@@ -49,6 +28,8 @@ func NewValue (arg AnyGo) Value {
 		result = NewInteger (arg)
 	case float32, float64:
 		result = NewReal (arg)
+	case complex64, complex128:
+		result = NewComplex (arg)
 	case string:
 		result = NewString (arg.(string))
 	case bool:
@@ -61,11 +42,7 @@ func NewValue (arg AnyGo) Value {
 
 type Unspecified struct {}
 
-func NewUnspecified () *Unspecified {
-	return nil
-}
-
-//func (self *Unspecified) typeid () typeid { return unspecified_id }
+// Implementaion of Value
 
 func (*Unspecified) scm () {}
 
@@ -73,9 +50,16 @@ func (self *Unspecified) String () string {
 	return "#<unspecified>"
 }
 
+// Constructor
+
+func NewUnspecified () *Unspecified {
+	return nil
+}
+
+// Predicate
+
 func IsUnspecified (arg Value) bool {
-//	return arg.typeid() == unspecified_id
-	_, is_unspecified := arg.(*Integer)
+	_, is_unspecified := arg.(*Unspecified)
 	return is_unspecified
 }
 
@@ -85,11 +69,23 @@ type Integer struct {
 	value big.Int
 }
 
+// Implementation of Value
+
+func (*Integer) scm () {}
+
+func (self *Integer) String () string {
+	return self.value.String()
+}
+
+// Constructor
+
 func NewInteger (arg AnyGo) *Integer {
 	var result Integer
 	switch arg.(type) {
 	default:
 		panic (fmt.Sprintf ("Can not convert %T to Integer", arg))
+	case *big.Int:
+		result.value.Set(arg.(*big.Int))
 	case int:
 		result.value.SetInt64(int64(arg.(int)))
 	case int8:
@@ -114,16 +110,9 @@ func NewInteger (arg AnyGo) *Integer {
 	return &result
 }
 
-//func (self *Integer) typeid () typeid { return integer_id }
-
-func (*Integer) scm () {}
-
-func (self *Integer) String () string {
-	return self.value.String()
-}
+// Predicate
 
 func IsInteger (arg Value) bool {
-	//return arg.typeid() == integer_id
 	_, is_integer := arg.(*Integer)
 	return is_integer
 }
@@ -134,16 +123,7 @@ type Rational struct {
 	value big.Rat
 }
 
-func NewRational (arg AnyGo) *Rational {
-	var result Rational
-	switch arg.(type) {
-	default:
-		panic (fmt.Sprintf ("Can not convert %T to Rational", arg))
-	}
-	return &result
-}
-
-//func (self *Rational) typeid () typeid { return rational_id }
+// Implementation for Value
 
 func (*Rational) scm () {}
 
@@ -151,8 +131,24 @@ func (self *Rational) String () string {
 	return self.value.String()
 }
 
+// Constructor
+
+func NewRational (arg AnyGo) *Rational {
+	var result Rational
+	switch arg.(type) {
+	default:
+		panic (fmt.Sprintf ("Can not convert %T to Rational", arg))
+	case *big.Rat:
+		result.value.Set (arg.(*big.Rat))
+	case *big.Int:
+		result.value.SetInt (arg.(*big.Int))
+	}
+	return &result
+}
+
+// Predicate
+
 func IsRational (arg Value) bool {
-	// return arg.typeid() == rational_id
 	_, is_rational := arg.(*Rational)
 	return is_rational
 }
@@ -162,6 +158,16 @@ func IsRational (arg Value) bool {
 type Real struct {
     value float64
 }
+
+// Implementation for Value
+
+func (*Real) scm () {}
+
+func (self *Real) String () string {
+	return strconv.Ftoa64 (self.value, 'g', -1)
+}
+
+// Constructor
 
 func NewReal (arg AnyGo) *Real {
 	var result Real
@@ -178,16 +184,9 @@ func NewReal (arg AnyGo) *Real {
 	return &result
 }
 
-//func (self *Real) typeid () typeid { return real_id }
-
-func (*Real) scm () {}
-
-func (self *Real) String () string {
-	return strconv.Ftoa64 (self.value, 'g', -1)
-}
+// Predicate
 
 func IsReal (arg Value) bool {
-	//return arg.typeid() == real_id
 	_, is_real := arg.(*Real)
 	return is_real
 }
@@ -198,27 +197,37 @@ type Complex struct {
 	value complex128
 }
 
+// Implementation of Value
+
+func (*Complex) scm () {}
+
+func (self *Complex) String () string {
+	return fmt.Sprintf ("%g", self.value)
+}
+
+// Constructor
+
 func NewComplex (arg AnyGo) *Complex {
 	panic ("not implemented")
 	var result Complex
 	switch arg.(type) {
 	default:
 		panic (fmt.Sprintf ("Can not convert %T to Complex", arg))
+	case complex64:
+		result.value = complex128(arg.(complex64))
+	case complex128:
+		result.value = arg.(complex128)
+	case float32:
+		result.value = complex(float64(arg.(float32)), 0)
+	case float64:
+		result.value = complex(arg.(float64), 0)
 	}
 	return &result
 }
 
-//func (self *Complex) typeid () typeid { return complex_id }
-
-func (*Complex) scm () {}
-
-func (self *Complex) String () string {
-	panic ("not implemented")
-	return ""
-}
+// Predicate
 
 func IsComplex (arg Value) bool {
-	//return arg.typeid() == complex_id
 	_, is_complex := arg.(*Complex)
 	return is_complex
 }
@@ -229,13 +238,7 @@ type Symbol struct {
 	value string
 }
 
-func NewSymbol (value string) *Symbol {
-	var result Symbol
-	result.value = value
-	return &result
-}
-
-//func (self *Symbol) typeid () typeid { return symbol_id }
+// Implementation of Value
 
 func (*Symbol) scm () {}
 
@@ -243,8 +246,17 @@ func (self *Symbol) String () string {
 	return self.value
 }
 
+// Constructor
+
+func NewSymbol (value string) *Symbol {
+	var result Symbol
+	result.value = value
+	return &result
+}
+
+// Predicate
+
 func IsSymbol (arg Value) bool {
-	//return arg.typeid() == symbol_id
 	_, is_symbol := arg.(*Symbol)
 	return is_symbol
 }
@@ -255,13 +267,7 @@ type String struct {
 	value string
 }
 
-func NewString (value string) *String {
-	var result String
-	result.value = value
-	return &result
-}
-
-//func (self *String) typeid () typeid { return string_id }
+// Implementation for Value
 
 func (*String) scm () {}
 
@@ -269,8 +275,17 @@ func (self *String) String () string {
 	return strconv.Quote(self.value)
 }
 
+// Constructor
+
+func NewString (value string) *String {
+	var result String
+	result.value = value
+	return &result
+}
+
+// Predicate
+
 func IsString (arg Value) bool {
-	//return arg.typeid() == string_id
 	_, is_string := arg.(*String)
 	return is_string
 }
@@ -280,6 +295,17 @@ func IsString (arg Value) bool {
 type Boolean struct {
 	value bool
 }
+
+// Implementation for Value
+
+func (*Boolean) scm () {}
+
+func (self *Boolean) String () string {
+	if self.value {	return "#t"	}
+	return "#f"
+}
+
+// Constructor
 
 func NewBoolean (arg AnyGo) *Boolean {
 	var result Boolean
@@ -292,32 +318,18 @@ func NewBoolean (arg AnyGo) *Boolean {
 	return &result
 }
 
+// Predicate
+
 func IsBoolean (arg Value) bool {
-	//return arg.typeid() == boolean_id
 	_, is_boolean := arg.(*Boolean)
 	return is_boolean
 }
 
-//func (self *Boolean) typeid () typeid { return boolean_id }
-
-func (*Boolean) scm () {}
-
-func (self *Boolean) String () string {
-	if self.value {
-		return "#t"
-	}
-	return "#f"
-}
-
-////////////////////////////////////////////////// Pair and List /////
+///////////////////////////////////////////////////// Empty list /////
 
 type Empty struct {}
 
-func NewEmpty () *Empty {
-	return nil
-}
-
-//func (self *Empty) typeid () typeid { return empty_id }
+// Implementation of Value
 
 func (*Empty) scm () {}
 
@@ -325,27 +337,27 @@ func (self *Empty) String () string {
 	return "()"
 }
 
+// Constructor
+
+func NewEmpty () *Empty {
+	return nil
+}
+
+// Predicate
+
 func IsEmpty (arg Value) bool {
-	//return arg.typeid() == empty_id
 	_, is_empty := arg.(*Empty)
 	return is_empty
 }
+
+/////////////////////////////////////////////////////////// Pair /////
 
 type Pair struct {
     car Value
 	cdr Value
 }
 
-func NewPair (car AnyGo, cdr AnyGo) *Pair {
-	return Cons (NewValue (car), NewValue (cdr))
-}
-
-func NewList (args ...AnyGo) *Pair {
-	panic ("not implemented")
-	return nil
-}
-
-//func (self *Pair) typeid () typeid { return pair_id }
+// Implementation of Value
 
 func (*Pair) scm () {}
 
@@ -353,31 +365,36 @@ func (self *Pair) String () string {
 	return "(" + self.car.String() + " . " + self.cdr.String() + ")"
 }
 
+// Constructor
+
+func NewPair (car AnyGo, cdr AnyGo) *Pair {
+	var result Pair
+	result.car = NewValue (car)
+	result.cdr = NewValue (cdr)
+	return &result
+}
+
+// Predicate
+
 func IsPair (arg Value) bool {
-	//return arg.typeid() == pair_id
 	_, is_pair := arg.(*Pair)
 	return is_pair
 }
 
-func Cons (car Value, cdr Value) *Pair {
-	var result Pair
-	result.car = car
-	result.cdr = cdr
-	return &result
-}
 
-func Car (arg Value) Value {
-	return arg.(*Pair).car
-}
+/////////////////////////////////////////////////////////// List /////
 
-func Cdr (arg Value) Value {
-	return arg.(*Pair).cdr
-}
+// Lists have no own type.  Instead lists are pairs with the
+// condition, that the last cdr must be the empty list.
 
-func List (args ...Value) *Pair {
+// Constructor
+
+func NewList (args ...AnyGo) *Pair {
 	panic ("not implemented")
 	return nil
 }
+
+// Predicate
 
 func IsList (arg Value) bool {
 	return (IsPair(arg) && IsList (Cdr (arg))) || false
@@ -386,8 +403,10 @@ func IsList (arg Value) bool {
 ////////////////////////////////////////////////////// Procedure /////
 
 type Procedure struct {
-	value func (args ...Value) Value
+	value Func
 }
+
+// Implementation of Value
 
 func (*Procedure) scm () {}
 
@@ -395,11 +414,15 @@ func (self *Procedure) String () string {
 	return "#<procedure>"
 }
 
-func NewProcedure () *Procedure {
+// Constructor
+
+func NewProcedure (arg Func) *Procedure {
 	var result Procedure
-	result.value = nil
+	result.value = arg
 	return &result
 }
+
+// Predicate
 
 func IsProcedure (arg Value) bool {
 	_, is_procedure := arg.(*Procedure)
@@ -413,12 +436,7 @@ type Environment struct {
 	current map [string] Value
 }
 
-func NewEnvironment (parent *Environment) *Environment {
-	var result Environment
-	result.parent = parent
-	result.current = make(map[string] Value)
-	return &result
-}
+// Implementation of Value
 
 func (*Environment) scm () {}
 
@@ -426,34 +444,143 @@ func (self *Environment) String () string {
 	return "#<environment>"
 }
 
+// Constructor
+
+func NewEnvironment () *Environment {
+	var result Environment
+	result.parent = nil
+	result.current = make(map[string] Value)
+	return &result
+}
+
+func (self *Environment) NewEnvironment () *Environment {
+	var result Environment
+	result.parent = self
+	result.current = make(map[string] Value)
+	return &result
+}
+
+// Predicate
+
 func IsEnvironment (arg Value) bool {
 	_, is_environment := arg.(*Environment)
 	return is_environment
 }
 
+// Add a definition to the environment
+
 func (self *Environment) Define (name string, value Value) {
 	self.current[name] = value
 }
 
-func (self *Environment) Lookup (name string) Value {
-	value := self.current[name]
-	if value == nil {
-		panic (fmt.Sprintf ("unbound variable '%s'", name))
-	} else {
-		value = self.parent.Lookup(name)
+// Get the value of a variable from the environment
+
+func (self *Environment) Get (name string) Value {
+	value, defined := self.current[name]
+	if !defined {
+		if self.parent == nil {
+			panic (fmt.Sprintf ("unbound variable '%s'", name))
+		} else {
+			value = self.parent.Get(name)
+		}
 	}
 	return value
 }
 
-////////////////////////////////////////////////////// Evaluator /////
+// Set a variable in the environment to the given value
 
-func (env *Environment) Eval (expr Value) (result Value) {
+func (self *Environment) Set (name string, value Value) {
+	_, defined := self.current[name]
+	if defined {
+		self.current[name] = value
+	} else {
+		if self.parent == nil {
+			panic (fmt.Sprintf ("unbound variable '%s'", name))
+		} else {
+			self.parent.Set (name, value)
+		}
+	}
+}
+
+// Evaluate an expression in the environment
+//
+// The code is based on "Structure and Interpretation of Computer
+// Programs" from Harold Abelson and Gerald Jay Sussman, in particular
+// chapter "Metalinguistic Abstraction":
+// http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
+
+func (self *Environment) Eval (expr Value) (result Value) {
 	println ("Evaluating")
 	switch expr.(type) {
 	default:
 		panic (fmt.Sprintf ("invalid expression type %T", expr))
 	case *Integer, *Rational, *Real, *Complex, *String, *Boolean:
+		// Self evaluating
 		result = expr
+	case *Symbol:
+		// Variable
+		result = self.Get(expr.(*Symbol).String())
+	case *Pair:
+		car := expr.(*Pair).car
+		cdr := expr.(*Pair).cdr
+		switch {
+		default:
+			panic (fmt.Sprintf ("invalid argument %v in expression type %T",
+				car, expr))
+		case IsSymbol (car):
+			switch car.String() {
+			default:
+				panic (fmt.Sprintf ("invalid symbol %v in expression type %T",
+					car.String(), expr))
+			case "quote":
+				result = cdr.(*Pair).car
+			case "set!":
+			case "define":
+				// TODO: thinking
+				args := cdr.(*Pair)
+				self.Define (args.car, self.Eval (args.cdr.(*Pair).car))
+			case "if":
+			case "lambda":
+			case "begin":
+			case "cond":
+				
+			}
+		}
 	}
 	return
+}
+
+// Initialize the environment with the Scheme primitives
+
+func (env *Environment) Init () {
+	env.Define ("cons", NewProcedure (Cons))
+	env.Define ("car",  NewProcedure (Car))
+	env.Define ("cdr",  NewProcedure (Cdr))
+	env.Define ("list", NewProcedure (List))
+}
+
+////////////////////////////////////////////// Scheme primitives /////
+
+// See "Revised^6 Report on the Algorithmic Language Scheme" for a
+// description of the primitives:
+// http://www.r6rs.org/final/html/r6rs/r6rs.html
+
+func Cons (args ...Value) Value {
+	var result Pair
+	result.car = args[0]
+	result.cdr = args[1]
+	return &result
+}
+
+func Car (arg ...Value) Value {
+	return arg[0].(*Pair).car
+}
+
+func Cdr (arg ...Value) Value {
+	return arg[0].(*Pair).cdr
+}
+
+func List (args ...Value) Value {
+	panic ("not implemented")
+	return nil
 }
