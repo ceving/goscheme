@@ -5,7 +5,7 @@ import (
     "fmt"
 	//"container/list"
 	//"strconv"
-	"./scm"
+	scm "./scheme"
 )
 
 

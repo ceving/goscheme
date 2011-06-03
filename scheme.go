@@ -1,4 +1,4 @@
-package scm
+package scheme
 
 import (
 	"big"
@@ -538,7 +538,7 @@ func (self *Environment) Eval (expr Value) (result Value) {
 			case "define":
 				// TODO: thinking
 				args := cdr.(*Pair)
-				self.Define (args.car, self.Eval (args.cdr.(*Pair).car))
+				self.Define (args.car.(*Symbol).String(), self.Eval (args.cdr.(*Pair).car))
 			case "if":
 			case "lambda":
 			case "begin":

@@ -34,4 +34,4 @@ GL=$(GOROOT)/bin/$(GOARCHID)l
 $(PROGRAM): main.$(GOARCHID)
 	$(GL) -o $@ $<
 
-main.$(GOARCHID): scm.$(GOARCHID)
+main.$(GOARCHID): scheme.$(GOARCHID)
