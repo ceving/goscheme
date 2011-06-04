@@ -546,9 +546,21 @@ func (self *Environment) SetValue (name Value, value Value) {
 // chapter "Metalinguistic Abstraction":
 // http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
 
+var TraceEval bool = false
+var TraceEvalDepth int = 0
+
+func indent (depth int) string {
+	if depth == 0 {
+		return ""
+	}
+	return "  " + indent (depth - 1)
+}
+
 func (self *Environment) Eval (expr Value) (result Value) {
-	expr_string := expr.String()
-	println ("Evaluating: " + expr_string)
+	if TraceEval {
+		println ("eval trace: " + indent (TraceEvalDepth) + expr.String())
+		TraceEvalDepth += 1
+	}
 	switch expr.(type) {
 	default:
 		panic (fmt.Sprintf ("invalid expression type %T", expr))
@@ -587,7 +599,6 @@ func (self *Environment) Eval (expr Value) (result Value) {
 			case "if":
 				args := cdr.(*Pair)
 				predicate := args.car
-				println("predicate: " + predicate.String())
 				consequent := args.cdr.(*Pair).car
 				alternative := args.cdr.(*Pair).cdr.(*Pair).car
 				if IsTrue(self.Eval(predicate)) {
@@ -605,7 +616,10 @@ func (self *Environment) Eval (expr Value) (result Value) {
 			}
 		}
 	}
-	println ("Returning: " + expr_string + " => " + result.String())
+	if TraceEval {
+		TraceEvalDepth += -1
+		println ("eval trace: " + indent (TraceEvalDepth) + "=> " + result.String())
+	}
 	return
 }
 

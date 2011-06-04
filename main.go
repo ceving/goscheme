@@ -27,7 +27,8 @@ func main () {
 	// same with scm.NewList
 	//println (scm.NewList (scm.NewSymbol("+"), 1, 2))
 
-	// Evaluate
+	scm.TraceEval = true
+	// Evaluate: (if #f 1 2)
 	env := scm.NewEnvironment()
 	env.Init ()
 	if_expr := scm.List (
