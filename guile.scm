@@ -59,3 +59,5 @@ c
     (define a 5)
     (+ a b))
   (f 10))
+
+(eq? (list) '())

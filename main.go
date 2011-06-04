@@ -30,5 +30,9 @@ func main () {
 	// Evaluate
 	env := scm.NewEnvironment()
 	env.Init ()
-	println (env.Eval(expr).String())
+	if_expr := scm.List (
+		scm.NewSymbol ("if"), scm.NewBoolean(false), 
+		scm.NewInteger(1), scm.NewInteger(2))
+	println (if_expr.String())
+	println (env.Eval(if_expr).String())
 }

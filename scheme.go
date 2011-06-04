@@ -342,6 +342,15 @@ func IsBoolean (arg Value) bool {
 	return is_boolean
 }
 
+func IsFalse (arg Value) bool {
+	value, is_boolean := arg.(*Boolean)
+	return is_boolean && value.value == false
+}
+
+func IsTrue (arg Value) bool {
+	return !IsFalse(arg)
+}
+
 ///////////////////////////////////////////////////// Empty list /////
 
 type Empty struct {}
@@ -397,7 +406,6 @@ func IsPair (arg Value) bool {
 	_, is_pair := arg.(*Pair)
 	return is_pair
 }
-
 
 /////////////////////////////////////////////////////////// List /////
 
@@ -490,6 +498,10 @@ func (self *Environment) Define (name string, value Value) {
 	self.current[name] = value
 }
 
+func (self *Environment) DefineValue (name Value, value Value) {
+	self.Define(name.(*Symbol).value, value)
+}
+
 // Get the value of a variable from the environment
 
 func (self *Environment) Get (name string) Value {
@@ -502,6 +514,10 @@ func (self *Environment) Get (name string) Value {
 		}
 	}
 	return value
+}
+
+func (self *Environment) GetValue (name Value) Value {
+	return self.Get(name.(*Symbol).value)
 }
 
 // Set a variable in the environment to the given value
@@ -519,6 +535,10 @@ func (self *Environment) Set (name string, value Value) {
 	}
 }
 
+func (self *Environment) SetValue (name Value, value Value) {
+	self.Set (name.(*Symbol).value, value)
+}
+
 // Evaluate an expression in the environment
 //
 // The code is based on "Structure and Interpretation of Computer
@@ -527,7 +547,8 @@ func (self *Environment) Set (name string, value Value) {
 // http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
 
 func (self *Environment) Eval (expr Value) (result Value) {
-	println ("Evaluating")
+	expr_string := expr.String()
+	println ("Evaluating: " + expr_string)
 	switch expr.(type) {
 	default:
 		panic (fmt.Sprintf ("invalid expression type %T", expr))
@@ -552,18 +573,39 @@ func (self *Environment) Eval (expr Value) (result Value) {
 			case "quote":
 				result = cdr.(*Pair).car
 			case "set!":
-			case "define":
-				// TODO: thinking
 				args := cdr.(*Pair)
-				self.Define (args.car.(*Symbol).String(), self.Eval (args.cdr.(*Pair).car))
+				assignment_variable := args.car
+				assignment_value := args.cdr.(*Pair).car
+				self.SetValue (assignment_variable, self.Eval (assignment_value))
+				result = NewUnspecified()
+			case "define":
+				args := cdr.(*Pair)
+				definition_variable := args.car
+				definition_value := args.cdr.(*Pair).car
+				self.DefineValue (definition_variable, self.Eval (definition_value))
+				result = NewUnspecified()
 			case "if":
+				args := cdr.(*Pair)
+				predicate := args.car
+				println("predicate: " + predicate.String())
+				consequent := args.cdr.(*Pair).car
+				alternative := args.cdr.(*Pair).cdr.(*Pair).car
+				if IsTrue(self.Eval(predicate)) {
+					result = self.Eval(consequent)
+				} else {
+					result = self.Eval(alternative)
+				}
 			case "lambda":
+				panic ("not implemented")
 			case "begin":
+				panic ("not implemented")
 			case "cond":
+				panic ("not implemented")
 				
 			}
 		}
 	}
+	println ("Returning: " + expr_string + " => " + result.String())
 	return
 }
 
@@ -589,15 +631,17 @@ func Cons (args ...Value) Value {
 	return &result
 }
 
-func Car (arg ...Value) Value {
-	return arg[0].(*Pair).car
+func Car (args ...Value) Value {
+	return args[0].(*Pair).car
 }
 
-func Cdr (arg ...Value) Value {
-	return arg[0].(*Pair).cdr
+func Cdr (args ...Value) Value {
+	return args[0].(*Pair).cdr
 }
 
 func List (args ...Value) Value {
-	panic ("not implemented")
-	return nil
+	if len(args) == 0 {
+		return NewEmpty()
+	}
+	return Cons (args[0], List (args[1:]...))
 }
