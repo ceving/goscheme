@@ -28,12 +28,14 @@ func main () {
 	//println (scm.NewList (scm.NewSymbol("+"), 1, 2))
 
 	scm.TraceEval = true
-	// Evaluate: (if #f 1 2)
 	env := scm.NewEnvironment()
 	env.Init ()
-	if_expr := scm.List (
-		scm.NewSymbol ("if"), scm.NewBoolean(false), 
-		scm.NewInteger(1), scm.NewInteger(2))
-	println (if_expr.String())
-	println (env.Eval(if_expr).String())
+	// Eval: (if #f 1 2)
+	if_expr := scm.NewList (scm.NewSymbol ("if"), false, 1, 2)
+	env.Eval(if_expr)
+	// Eval: (begin 1 2)
+	begin_expr := scm.NewList (scm.NewSymbol ("begin"), 1, 2)
+	env.Eval(begin_expr)
+	// Eval: cons
+	env.Eval(scm.NewSymbol("cons"))
 }

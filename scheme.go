@@ -21,6 +21,7 @@ import (
 	"big"
 	"fmt"
 	"strconv"
+	"utf8"
 )
 
 //////////////////////////////////////////////////// Basic Types /////
@@ -281,7 +282,7 @@ func IsSymbol (arg Value) bool {
 ///////////////////////////////////////////////////////// String /////
 
 type String struct {
-	value string
+	value *utf8.String
 }
 
 // Implementation for Value
@@ -289,14 +290,14 @@ type String struct {
 func (*String) scm () {}
 
 func (self *String) String () string {
-	return strconv.Quote(self.value)
+	return strconv.Quote(self.value.String())
 }
 
 // Constructor
 
 func NewString (value string) *String {
 	var result String
-	result.value = value
+	result.value = utf8.NewString(value)
 	return &result
 }
 
@@ -414,9 +415,11 @@ func IsPair (arg Value) bool {
 
 // Constructor
 
-func NewList (args ...AnyGo) *Pair {
-	panic ("not implemented")
-	return nil
+func NewList (args ...AnyGo) Value {
+	if len(args) == 0 {
+		return NewEmpty()
+	}
+	return Cons (NewValue(args[0]), NewList (args[1:]...))
 }
 
 // Predicate
@@ -425,33 +428,77 @@ func IsList (arg Value) bool {
 	return (IsPair(arg) && IsList (Cdr (arg))) || false
 }
 
-////////////////////////////////////////////////////// Procedure /////
+//////////////////////////////////////////// Primitive procedure /////
 
-type Procedure struct {
+type PrimitiveProc struct {
+	name string
 	value Func
 }
 
 // Implementation of Value
 
-func (*Procedure) scm () {}
+func (*PrimitiveProc) scm () {}
 
-func (self *Procedure) String () string {
-	return "#<procedure>"
+func (self *PrimitiveProc) String () string {
+	return fmt.Sprintf ("#<primitive-procedure %s>", self.name)
 }
 
 // Constructor
 
-func NewProcedure (arg Func) *Procedure {
-	var result Procedure
+func NewPrimitiveProc (name string, arg Func) *PrimitiveProc {
+	var result PrimitiveProc
+	result.name = name
 	result.value = arg
 	return &result
 }
 
 // Predicate
 
-func IsProcedure (arg Value) bool {
-	_, is_procedure := arg.(*Procedure)
-	return is_procedure
+func IsPrimitiveProc (arg Value) bool {
+	_, is_primitiveproc := arg.(*PrimitiveProc)
+	return is_primitiveproc
+}
+
+// Application
+
+func (self *PrimitiveProc) Apply (arg Value) (result Value) {
+	panic ("not implemented")
+	return nil
+}
+
+//////////////////////////////////////////// Compound procedure /////
+
+type CompoundProc struct {
+	name string
+}
+
+// Implementation of Value
+
+func (*CompoundProc) scm () {}
+
+func (self *CompoundProc) String () string {
+	return fmt.Sprintf ("#<procedure %s>", self.name)
+}
+
+// Constructor
+
+func NewCompoundProc (name string) *CompoundProc {
+	panic ("not implemented")
+	return nil
+}
+
+// Predicate
+
+func IsCompoundProc (arg Value) bool {
+	_, is_compoundproc := arg.(*CompoundProc)
+	return is_compoundproc
+}
+
+// Application
+
+func (self *CompoundProc) Apply (arg Value) (result Value) {
+	panic ("not implemented")
+	return nil
 }
 
 //////////////////////////////////////////////////// Environment /////
@@ -547,20 +594,8 @@ func (self *Environment) SetValue (name Value, value Value) {
 // http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
 
 var TraceEval bool = false
-var TraceEvalDepth int = 0
-
-func indent (depth int) string {
-	if depth == 0 {
-		return ""
-	}
-	return "  " + indent (depth - 1)
-}
 
 func (self *Environment) Eval (expr Value) (result Value) {
-	if TraceEval {
-		println ("eval trace: " + indent (TraceEvalDepth) + expr.String())
-		TraceEvalDepth += 1
-	}
 	switch expr.(type) {
 	default:
 		panic (fmt.Sprintf ("invalid expression type %T", expr))
@@ -585,22 +620,19 @@ func (self *Environment) Eval (expr Value) (result Value) {
 			case "quote":
 				result = cdr.(*Pair).car
 			case "set!":
-				args := cdr.(*Pair)
-				assignment_variable := args.car
-				assignment_value := args.cdr.(*Pair).car
+				assignment_variable := cdr.(*Pair).car
+				assignment_value := cdr.(*Pair).cdr.(*Pair).car
 				self.SetValue (assignment_variable, self.Eval (assignment_value))
 				result = NewUnspecified()
 			case "define":
-				args := cdr.(*Pair)
-				definition_variable := args.car
-				definition_value := args.cdr.(*Pair).car
+				definition_variable := cdr.(*Pair).car
+				definition_value := cdr.(*Pair).cdr.(*Pair).car
 				self.DefineValue (definition_variable, self.Eval (definition_value))
 				result = NewUnspecified()
 			case "if":
-				args := cdr.(*Pair)
-				predicate := args.car
-				consequent := args.cdr.(*Pair).car
-				alternative := args.cdr.(*Pair).cdr.(*Pair).car
+				predicate := cdr.(*Pair).car
+				consequent := cdr.(*Pair).cdr.(*Pair).car
+				alternative := cdr.(*Pair).cdr.(*Pair).cdr.(*Pair).car
 				if IsTrue(self.Eval(predicate)) {
 					result = self.Eval(consequent)
 				} else {
@@ -609,7 +641,7 @@ func (self *Environment) Eval (expr Value) (result Value) {
 			case "lambda":
 				panic ("not implemented")
 			case "begin":
-				panic ("not implemented")
+				result = self.EvalSequence (cdr)
 			case "cond":
 				panic ("not implemented")
 				
@@ -617,19 +649,35 @@ func (self *Environment) Eval (expr Value) (result Value) {
 		}
 	}
 	if TraceEval {
-		TraceEvalDepth += -1
-		println ("eval trace: " + indent (TraceEvalDepth) + "=> " + result.String())
+		fmt.Printf ("eval: %s => %s\n", expr.String(), result.String())
 	}
-	return
+	return result
+}
+
+// Evaluate a sequence of expressions.
+
+func (self *Environment) EvalSequence (value Value) (result Value) {
+	pair, is_pair := value.(*Pair)
+	if is_pair {
+		if IsEmpty (pair.cdr) {
+			result = self.Eval (pair.car)
+		} else {
+			self.Eval (pair.car)
+			result = self.EvalSequence (pair.cdr)
+		}
+	} else {
+		panic (fmt.Sprintf ("Invalid argument type %T", value))
+	}
+	return result
 }
 
 // Initialize the environment with the Scheme primitives
 
 func (env *Environment) Init () {
-	env.Define ("cons", NewProcedure (Cons))
-	env.Define ("car",  NewProcedure (Car))
-	env.Define ("cdr",  NewProcedure (Cdr))
-	env.Define ("list", NewProcedure (List))
+	env.Define ("cons", NewPrimitiveProc ("cons", Cons))
+	env.Define ("car",  NewPrimitiveProc ("car",  Car))
+	env.Define ("cdr",  NewPrimitiveProc ("cdr",  Cdr))
+	env.Define ("list", NewPrimitiveProc ("list", List))
 }
 
 ////////////////////////////////////////////// Scheme primitives /////

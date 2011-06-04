@@ -61,3 +61,13 @@ c
   (f 10))
 
 (eq? (list) '())
+
+(begin)
+
+display
+lambda
+format
+
+(define (a b)
+  (display b))
+a
