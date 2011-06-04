@@ -644,7 +644,6 @@ func (self *Environment) Eval (expr Value) (result Value) {
 				result = self.EvalSequence (cdr)
 			case "cond":
 				panic ("not implemented")
-				
 			}
 		}
 	}
