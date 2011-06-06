@@ -10,6 +10,7 @@
 (apropos "apply")
 
 (display (if #f 1))
+(define unspecified (if #f 1))
 
 (car 5)
 
@@ -63,10 +64,12 @@ c
 (eq? (list) '())
 
 (begin)
+(display (begin))
 
 display
 lambda
 format
+define
 
 (define (a b)
   (display b))

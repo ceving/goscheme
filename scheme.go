@@ -1,6 +1,6 @@
 // GoScheme - a basic evaluator for Scheme expression written in Go
 //
-// Copyright (C) 2011  Sascha Ziemann
+// Copyright (C) 2011  Sascha Ziemann <ceving@gmail.com>
 //
 // GoScheme is free software: you can redistribute it and/or modify it
 // under the terms of the GNU General Public License as published by
@@ -30,11 +30,11 @@ type Any interface {}
 
 type Value interface {
 	String () string
-	scm ()
+	Eval (*Environment) Value
 }
 
 type Procedure interface {
-	Apply (Value) Value
+	Apply (...Value) Value
 }
 
 type Proc func (args ...Value) Value
@@ -64,14 +64,6 @@ func NewValue (arg Any) Value {
 
 type Unspecified struct {}
 
-// Implementaion of Value
-
-func (*Unspecified) scm () {}
-
-func (self *Unspecified) String () string {
-	return "#<unspecified>"
-}
-
 // Constructor
 
 func NewUnspecified () *Unspecified {
@@ -85,18 +77,22 @@ func IsUnspecified (arg Value) bool {
 	return is_unspecified
 }
 
+// String representation
+
+func (self *Unspecified) String () string {
+	return "#<unspecified>"
+}
+
+// Evaluation
+
+func (self *Unspecified) Eval (*Environment) Value {
+	return self
+}
+
 //////////////////////////////////////////////////////// Integer /////
 
 type Integer struct {
 	value big.Int
-}
-
-// Implementation of Value
-
-func (*Integer) scm () {}
-
-func (self *Integer) String () string {
-	return self.value.String()
 }
 
 // Constructor
@@ -139,18 +135,22 @@ func IsInteger (arg Value) bool {
 	return is_integer
 }
 
+// String representation
+
+func (self *Integer) String () string {
+	return self.value.String()
+}
+
+// Evaluation
+
+func (self *Integer) Eval (*Environment) Value {
+	return self
+}
+
 /////////////////////////////////////////////////////// Rational /////
 
 type Rational struct {
 	value big.Rat
-}
-
-// Implementation for Value
-
-func (*Rational) scm () {}
-
-func (self *Rational) String () string {
-	return self.value.String()
 }
 
 // Constructor
@@ -175,18 +175,22 @@ func IsRational (arg Value) bool {
 	return is_rational
 }
 
+// String representation
+
+func (self *Rational) String () string {
+	return self.value.String()
+}
+
+// Evaluation
+
+func (self *Rational) Eval (*Environment) Value {
+	return self
+}
+
 ////////////////////////////////////////////////////////// Real //////
 
 type Real struct {
     value float64
-}
-
-// Implementation for Value
-
-func (*Real) scm () {}
-
-func (self *Real) String () string {
-	return strconv.Ftoa64 (self.value, 'g', -1)
 }
 
 // Constructor
@@ -213,18 +217,22 @@ func IsReal (arg Value) bool {
 	return is_real
 }
 
+// String representation
+
+func (self *Real) String () string {
+	return strconv.Ftoa64 (self.value, 'g', -1)
+}
+
+// Evaluation
+
+func (self *Real) Eval (*Environment) Value {
+	return self
+}
+
 /////////////////////////////////////////////////////// Complex //////
 
 type Complex struct {
 	value complex128
-}
-
-// Implementation of Value
-
-func (*Complex) scm () {}
-
-func (self *Complex) String () string {
-	return fmt.Sprintf ("%g", self.value)
 }
 
 // Constructor
@@ -254,18 +262,22 @@ func IsComplex (arg Value) bool {
 	return is_complex
 }
 
+// String representation
+
+func (self *Complex) String () string {
+	return fmt.Sprintf ("%g", self.value)
+}
+
+// Evaluation
+
+func (self *Complex) Eval (*Environment) Value {
+	return self
+}
+
 ///////////////////////////////////////////////////////// Symbol /////
 
 type Symbol struct {
 	value string
-}
-
-// Implementation of Value
-
-func (*Symbol) scm () {}
-
-func (self *Symbol) String () string {
-	return self.value
 }
 
 // Constructor
@@ -283,18 +295,22 @@ func IsSymbol (arg Value) bool {
 	return is_symbol
 }
 
+// String representation
+
+func (self *Symbol) String () string {
+	return self.value
+}
+
+// Evaluation
+
+func (self *Symbol) Eval (env *Environment) Value {
+	return env.Get(self.value)
+}
+
 ///////////////////////////////////////////////////////// String /////
 
 type String struct {
 	value *utf8.String
-}
-
-// Implementation for Value
-
-func (*String) scm () {}
-
-func (self *String) String () string {
-	return strconv.Quote(self.value.String())
 }
 
 // Constructor
@@ -312,19 +328,22 @@ func IsString (arg Value) bool {
 	return is_string
 }
 
+// String representation
+
+func (self *String) String () string {
+	return strconv.Quote(self.value.String())
+}
+
+// Evaluation
+
+func (self *String) Eval (*Environment) Value {
+	return self
+}
+
 //////////////////////////////////////////////////////// Boolean /////
 
 type Boolean struct {
 	value bool
-}
-
-// Implementation for Value
-
-func (*Boolean) scm () {}
-
-func (self *Boolean) String () string {
-	if self.value {	return "#t"	}
-	return "#f"
 }
 
 // Constructor
@@ -356,17 +375,22 @@ func IsTrue (arg Value) bool {
 	return !IsFalse(arg)
 }
 
+// String representation
+
+func (self *Boolean) String () string {
+	if self.value {	return "#t"	}
+	return "#f"
+}
+
+// Evaluation
+
+func (self *Boolean) Eval (*Environment) Value {
+	return self
+}
+
 ///////////////////////////////////////////////////// Empty list /////
 
 type Empty struct {}
-
-// Implementation of Value
-
-func (*Empty) scm () {}
-
-func (self *Empty) String () string {
-	return "()"
-}
 
 // Constructor
 
@@ -381,27 +405,23 @@ func IsEmpty (arg Value) bool {
 	return is_empty
 }
 
+// String representation
+
+func (self *Empty) String () string {
+	return "()"
+}
+
+// Evaluation
+
+func (self *Empty) Eval (*Environment) Value {
+	return self
+}
+
 /////////////////////////////////////////////////////////// Pair /////
 
 type Pair struct {
     car Value
 	cdr Value
-}
-
-// Implementation of Value
-
-func (*Pair) scm () {}
-
-func (self *Pair) String () string {
-	switch {
-	case self == nil:
-		panic ("pair is nil")
-	case self.car == nil:
-		panic ("pair car is nil")
-	case self.cdr == nil:
-		panic ("pair cdr is nil")
-	}
-	return "(" + self.car.String() + " . " + self.cdr.String() + ")"
 }
 
 // Constructor
@@ -419,6 +439,115 @@ func IsPair (arg Value) bool {
 	_, is_pair := arg.(*Pair)
 	return is_pair
 }
+
+// String representation
+
+func (self *Pair) String () string {
+	switch {
+	case self == nil:
+		panic ("pair is nil")
+	case self.car == nil:
+		panic ("pair car is nil")
+	case self.cdr == nil:
+		panic ("pair cdr is nil")
+	}
+	return "(" + self.car.String() + " . " + self.cdr.String() + ")"
+}
+
+// Evaluation
+//
+// The code is based on "Structure and Interpretation of Computer
+// Programs" from Harold Abelson and Gerald Jay Sussman, in particular
+// chapter "Metalinguistic Abstraction":
+// http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
+
+func (self *Pair) Eval (env *Environment) (result Value) {
+	symbol, is_symbol := self.car.(*Symbol)
+	switch {
+	case is_symbol && symbol.value == "quote":
+		result = self.cdr.(*Pair).car
+	case is_symbol && symbol.value == "set!":
+		assignment_variable := self.cdr.(*Pair).car
+		assignment_value    := self.cdr.(*Pair).cdr.(*Pair).car
+		env.SetValue(assignment_variable, assignment_value.Eval(env))
+		result = NewUnspecified()
+	case is_symbol && symbol.value == "define":
+		definition_variable := self.cdr.(*Pair).car
+		definition_value    := self.cdr.(*Pair).cdr.(*Pair).car
+		env.DefineValue(definition_variable, definition_value.Eval(env))
+		result = NewUnspecified()
+	case is_symbol && symbol.value == "if":
+		predicate   := self.cdr.(*Pair).car
+		consequent  := self.cdr.(*Pair).cdr.(*Pair).car
+		alternative := self.cdr.(*Pair).cdr.(*Pair).cdr.(*Pair).car
+		if IsTrue(predicate.Eval(env)) {
+			result = consequent.Eval(env)
+		} else {
+			result = alternative.Eval(env)
+		}
+	case is_symbol && symbol.value == "lambda":
+		panic ("not implemented")
+	case is_symbol && symbol.value == "begin":
+		result = self.cdr.(*Pair).EvalSequence(env)
+	case is_symbol && symbol.value == "cond":
+		panic ("not implemented")
+	default:
+		eval_trace ("application", "")
+		operator := self.car.Eval(env)
+		eval_trace ("operator", fmt.Sprintf ("%v", operator))
+		switch operator.(type) {
+		case *PrimitiveProc:
+			args, is_pair := self.cdr.(*Pair)
+			if is_pair {
+				arguments := args.EvalToSlice(env)
+				eval_trace ("arguments", fmt.Sprintf ("%v", arguments))
+				result = operator.(*PrimitiveProc).Apply(arguments...)
+			} else {
+				eval_trace ("arguments", "[]")
+				result = operator.(*PrimitiveProc).Apply()
+			}
+		case *CompoundProc:
+			panic("not implemented")
+		default:
+			panic("invalid application operator")
+		}
+	}
+	return result
+}
+
+// This function implements SICPs list-of-values.  It returns a slice
+// instead of a Value, because Gos application needs a slice. Also I
+// dislike the original name, because it does not make clear, that an
+// evaluation is done in the body.
+
+func (self *Pair) EvalToSlice (env *Environment) []Value {
+	l, is_list := ListLength (self)
+	if !is_list {
+		panic ("wrong type argument")
+	}
+	slice := make([]Value, l)
+	if l == 0 { return slice }
+	i := 0
+	for l--; i < l; i++ {
+		slice[i] = self.car.Eval(env)
+		self = self.cdr.(*Pair)
+	}
+	slice[i] = self.car.Eval(env)
+	return slice	
+}
+
+// Evaluate a sequence of expressions.
+
+func (self *Pair) EvalSequence (env *Environment) (result Value) {
+	if IsEmpty (self.cdr) {
+		result = self.car.Eval(env)
+	} else {
+		self.car.Eval(env)
+		result = self.cdr.(*Pair).EvalSequence(env)
+	}
+	return result
+}
+
 
 // Conversion
 
@@ -447,7 +576,23 @@ func NewList (args ...Any) Value {
 // Predicate
 
 func IsList (arg Value) bool {
-	return (IsPair(arg) && IsList (Cdr (arg))) || false
+	pair, is_pair := arg.(*Pair)
+	return is_pair && IsList (pair.cdr)
+}
+
+// Calculate the length of a list.
+
+func ListLength (arg Value) (length int, is_list bool) {
+	length  = 0
+	is_list = false
+	for pair, is_pair := arg.(*Pair); is_pair; pair, is_pair = arg.(*Pair) {
+		length++
+		arg = pair.cdr
+	}
+	if _, is_empty := arg.(*Empty); is_empty {
+		is_list = true
+	}
+	return
 }
 
 //////////////////////////////////////////// Primitive procedure /////
@@ -457,9 +602,9 @@ type PrimitiveProc struct {
 	proc Proc
 }
 
-// Implementation of Value
+// Evaluation
 
-func (*PrimitiveProc) scm () {}
+func (*PrimitiveProc) Eval (env *Environment) Value { return nil }
 
 func (self *PrimitiveProc) String () string {
 	return fmt.Sprintf ("#<primitive-procedure %s>", self.name)
@@ -483,7 +628,7 @@ func IsPrimitiveProc (arg Value) bool {
 
 // Application
 
-func (self *PrimitiveProc) Apply (args []Value) Value {
+func (self *PrimitiveProc) Apply (args ...Value) Value {
 	return self.proc(args...)
 }
 
@@ -493,9 +638,9 @@ type CompoundProc struct {
 	name string
 }
 
-// Implementation of Value
+// Evaluation
 
-func (*CompoundProc) scm () {}
+func (*CompoundProc) Eval (env *Environment) Value { return nil }
 
 func (self *CompoundProc) String () string {
 	return fmt.Sprintf ("#<procedure %s>", self.name)
@@ -529,9 +674,11 @@ type Environment struct {
 	current map [string] Value
 }
 
-// Implementation of Value
+// Evaluation
 
-func (*Environment) scm () {}
+func (self *Environment) Eval (env *Environment) Value { return self }
+
+// String representation
 
 func (self *Environment) String () string {
 	return "#<environment>"
@@ -609,20 +756,6 @@ func (self *Environment) SetValue (name Value, value Value) {
 
 // Evaluate an expression in the environment
 //
-// The code is based on "Structure and Interpretation of Computer
-// Programs" from Harold Abelson and Gerald Jay Sussman, in particular
-// chapter "Metalinguistic Abstraction":
-// http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
-
-func indent (step int, level int) string {
-	var str []byte = make([]byte, step*level)
-	for i := 0; i < level; i++ {
-		for j := 0; j < step; j++ {
-			str[step*i+j] = ' '
-		}
-	}
-	return string(str)
-} 
 
 var TraceEval bool = false
 var eval_depth int = 0
@@ -633,16 +766,16 @@ func eval_trace (tag string, msg string) {
 			indent(2, eval_depth), tag, msg)
 	}
 }
-
-func (self *Environment) Eval (expr Value) (result Value) {
+/*
+func (self *Environment) eval (expr Value) (result Value) {
 	eval_trace ("expression", expr.String())
 	if TraceEval { eval_depth++ }
 	switch expr.(type) {
 	default:
 		panic (fmt.Sprintf ("invalid expression type %T", expr))
-	case *Integer, *Rational, *Real, *Complex, *String, *Boolean:
+	case *Integer, *Rational, *Real, *Complex, *String, *Boolean, *Unspecified:
 		// Self evaluating
-		result = expr
+		result = expr.Eval(self)
 	case *Symbol:
 		// Variable
 		result = self.Get(expr.(*Symbol).String())
@@ -699,43 +832,7 @@ func (self *Environment) Eval (expr Value) (result Value) {
 	eval_trace ("result", fmt.Sprintf ("%v => %v", expr, result))
 	return result
 }
-
-// This function implements SICPs list-of-values.  It returns a slice
-// instead of a Value, because Gos application needs a slice. Also I
-// dislike the original name, because it does not make clear, that an
-// evaluation is done in the body.
-
-func (self *Environment) EvalToSlice (arg Value) []Value {
-	slice := make([]Value, ListLength (arg))
-	n := 0
-	for !IsEmpty(arg) {
-		pair, is_pair := arg.(*Pair)
-		if !is_pair {
-			panic (fmt.Sprintf("Need pair. Got &T.", arg))
-		}
-		slice[n] = self.Eval(pair.car)
-		arg = pair.cdr
-		n++
-	}
-	return slice	
-}
-
-// Evaluate a sequence of expressions.
-
-func (self *Environment) EvalSequence (value Value) (result Value) {
-	pair, is_pair := value.(*Pair)
-	if is_pair {
-		if IsEmpty (pair.cdr) {
-			result = self.Eval (pair.car)
-		} else {
-			self.Eval (pair.car)
-			result = self.EvalSequence (pair.cdr)
-		}
-	} else {
-		panic (fmt.Sprintf ("Invalid argument type %T", value))
-	}
-	return result
-}
+*/
 
 // Initialize the environment with the Scheme primitives
 
@@ -748,16 +845,15 @@ func (env *Environment) Init () {
 
 /////////////////////////////////////////////// Helper functions /////
 
-// Calculate the length of a list.
-
-func ListLength (arg Value) int {
-	n := 0
-	for !IsEmpty(arg) {
-		n++
-		arg = arg.(*Pair).cdr
+func indent (step int, level int) string {
+	var str []byte = make([]byte, step*level)
+	for i := 0; i < level; i++ {
+		for j := 0; j < step; j++ {
+			str[step*i+j] = ' '
+		}
 	}
-	return n
-}
+	return string(str)
+} 
 
 ///////////////////////////////////////////////// Function trace /////
 
@@ -818,5 +914,9 @@ var Length Proc = func (args ...Value) Value {
 	if len(args) != 1 {
 		panic ("Wrong number of arguments")
 	}
-	return NewInteger(ListLength(args[0]))
+	length, is_list := ListLength(args[0])
+	if !is_list {
+		panic ("wrong type argument")
+	}
+	return NewInteger(length)
 }
