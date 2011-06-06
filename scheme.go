@@ -26,7 +26,7 @@ import (
 
 //////////////////////////////////////////////////// Basic Types /////
 
-type AnyGo interface {}
+type Any interface {}
 
 type Value interface {
 	String () string
@@ -39,7 +39,7 @@ type Procedure interface {
 
 type Proc func (args ...Value) Value
 
-func NewValue (arg AnyGo) Value {
+func NewValue (arg Any) Value {
 	var result Value
 	switch arg.(type) {
 	default:
@@ -101,7 +101,7 @@ func (self *Integer) String () string {
 
 // Constructor
 
-func NewInteger (arg AnyGo) *Integer {
+func NewInteger (arg Any) *Integer {
 	var result Integer
 	switch arg.(type) {
 	default:
@@ -155,7 +155,7 @@ func (self *Rational) String () string {
 
 // Constructor
 
-func NewRational (arg AnyGo) *Rational {
+func NewRational (arg Any) *Rational {
 	var result Rational
 	switch arg.(type) {
 	default:
@@ -191,7 +191,7 @@ func (self *Real) String () string {
 
 // Constructor
 
-func NewReal (arg AnyGo) *Real {
+func NewReal (arg Any) *Real {
 	var result Real
 	switch arg.(type) {
 	default:
@@ -229,7 +229,7 @@ func (self *Complex) String () string {
 
 // Constructor
 
-func NewComplex (arg AnyGo) *Complex {
+func NewComplex (arg Any) *Complex {
 	panic ("not implemented")
 	var result Complex
 	switch arg.(type) {
@@ -329,7 +329,7 @@ func (self *Boolean) String () string {
 
 // Constructor
 
-func NewBoolean (arg AnyGo) *Boolean {
+func NewBoolean (arg Any) *Boolean {
 	var result Boolean
 	switch arg.(type) {
 	default:
@@ -406,7 +406,7 @@ func (self *Pair) String () string {
 
 // Constructor
 
-func NewPair (car AnyGo, cdr AnyGo) *Pair {
+func NewPair (car Any, cdr Any) *Pair {
 	var result Pair
 	result.car = NewValue (car)
 	result.cdr = NewValue (cdr)
@@ -437,11 +437,11 @@ func ToPair (value Value) *Pair {
 
 // Constructor
 
-func NewList (args ...AnyGo) Value {
+func NewList (args ...Any) Value {
 	if len(args) == 0 {
 		return NewEmpty()
 	}
-	return Cons (NewValue(args[0]), NewList (args[1:]...))
+	return NewPair (NewValue(args[0]), NewList (args[1:]...))
 }
 
 // Predicate
@@ -484,7 +484,7 @@ func IsPrimitiveProc (arg Value) bool {
 // Application
 
 func (self *PrimitiveProc) Apply (args []Value) Value {
-	return self.proc (args...)
+	return self.proc(args...)
 }
 
 //////////////////////////////////////////// Compound procedure /////
@@ -614,9 +614,29 @@ func (self *Environment) SetValue (name Value, value Value) {
 // chapter "Metalinguistic Abstraction":
 // http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
 
+func indent (step int, level int) string {
+	var str []byte = make([]byte, step*level)
+	for i := 0; i < level; i++ {
+		for j := 0; j < step; j++ {
+			str[step*i+j] = ' '
+		}
+	}
+	return string(str)
+} 
+
 var TraceEval bool = false
+var eval_depth int = 0
+
+func eval_trace (tag string, msg string) {
+	if TraceEval {
+		fmt.Printf ("EVAL: %s%s: %s\n",
+			indent(2, eval_depth), tag, msg)
+	}
+}
 
 func (self *Environment) Eval (expr Value) (result Value) {
+	eval_trace ("expression", expr.String())
+	if TraceEval { eval_depth++ }
 	switch expr.(type) {
 	default:
 		panic (fmt.Sprintf ("invalid expression type %T", expr))
@@ -659,12 +679,14 @@ func (self *Environment) Eval (expr Value) (result Value) {
 		case is_symbol && symbol.value == "cond":
 			panic ("not implemented")
 		default:
-			println("application")
-			value := self.Eval(car)
-			fmt.Printf ("value: %v\n", value)
-			switch value.(type) {
+			eval_trace ("application", "")
+			operator := self.Eval(car)
+			eval_trace ("operator", fmt.Sprintf ("%v", operator))
+			arguments := self.EvalToSlice(cdr)
+			eval_trace ("arguments", fmt.Sprintf ("%v", arguments))
+			switch operator.(type) {
 			case *PrimitiveProc:
-				result = value.(*PrimitiveProc).Apply(self.EvalToSlice(cdr))
+				result = operator.(*PrimitiveProc).Apply(arguments)
 			case *CompoundProc:
 				panic("not implemented")
 			default:
@@ -672,12 +694,9 @@ func (self *Environment) Eval (expr Value) (result Value) {
 			}
 		}
 	}
-	if TraceEval {
-		if result == nil {
-			panic ("result undefined")
-		}
-		fmt.Printf ("TraceEval: %s => %s\n", expr.String(), result.String())
-	}
+	if result == nil { panic ("result undefined") }
+	if TraceEval { eval_depth-- }
+	eval_trace ("result", fmt.Sprintf ("%v => %v", expr, result))
 	return result
 }
 
@@ -742,26 +761,28 @@ func ListLength (arg Value) int {
 
 ///////////////////////////////////////////////// Function trace /////
 
-var TraceProc bool = false
-
 // Make a procedure which traces the arguments and the return value.
 
+var TracePrefix string = ""
+
 func Trace (prefix string, proc *Proc) {
-	if TraceProc {
-		orig_proc := *proc
-		var new_proc Proc
-		new_proc = func (args ...Value) Value {
-			trace := fmt.Sprintf ("TraceProc: (%s", prefix)
-			for _, arg := range args {
-				trace += fmt.Sprintf (" %v", arg)
-			}
-			result := orig_proc (args...)
-			trace += fmt.Sprintf (") => %v", result)
-			fmt.Println (trace)
-			return result
+	orig_proc := *proc
+	var new_proc Proc
+	new_proc = func (args ...Value) Value {
+		fmt.Printf ("%s--> (%s", TracePrefix, prefix)
+		for _, arg := range args {
+			fmt.Printf (" %v", arg)
 		}
-		proc = &new_proc
+		fmt.Print (")\n");
+		result := orig_proc (args...)
+		fmt.Printf ("%s<-- (%s", TracePrefix, prefix)
+		for _, arg := range args {
+			fmt.Printf (" %v", arg)
+		}
+		fmt.Printf (") => %v\n", result)
+		return result
 	}
+	*proc = new_proc
 }
 
 ////////////////////////////////////////////// Scheme primitives /////
@@ -771,37 +792,31 @@ func Trace (prefix string, proc *Proc) {
 // http://www.r6rs.org/final/html/r6rs/r6rs.html
 
 
-func Cons (args ...Value) Value {
-	fmt.Print("cons:")
-	for i, a := range args {
-		fmt.Printf(" %d=%v", i, a)
-	}
-	fmt.Println()
+var Cons Proc = func (args ...Value) Value {
 	var result Pair
 	result.car = args[0]
 	result.cdr = args[1]
 	return &result
 }
 
-func Car (args ...Value) Value {
+var Car Proc = func (args ...Value) Value {
 	return args[0].(*Pair).car
 }
 
-func Cdr (args ...Value) Value {
+var Cdr Proc = func (args ...Value) Value {
 	return args[0].(*Pair).cdr
 }
 
-func List (args ...Value) Value {
+var List Proc = func (args ...Value) Value {
 	if len(args) == 0 {
 		return NewEmpty()
 	}
 	return Cons (args[0], List (args[1:]...))
 }
 
-func Length (args ...Value) Value {
+var Length Proc = func (args ...Value) Value {
 	if len(args) != 1 {
 		panic ("Wrong number of arguments")
 	}
-	panic ("not implemented")
+	return NewInteger(ListLength(args[0]))
 }
-
