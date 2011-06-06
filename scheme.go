@@ -33,7 +33,11 @@ type Value interface {
 	scm ()
 }
 
-type Func func (args ...Value) Value
+type Procedure interface {
+	Apply (Value) Value
+}
+
+type Proc func (args ...Value) Value
 
 func NewValue (arg AnyGo) Value {
 	var result Value
@@ -389,6 +393,14 @@ type Pair struct {
 func (*Pair) scm () {}
 
 func (self *Pair) String () string {
+	switch {
+	case self == nil:
+		panic ("pair is nil")
+	case self.car == nil:
+		panic ("pair car is nil")
+	case self.cdr == nil:
+		panic ("pair cdr is nil")
+	}
 	return "(" + self.car.String() + " . " + self.cdr.String() + ")"
 }
 
@@ -406,6 +418,16 @@ func NewPair (car AnyGo, cdr AnyGo) *Pair {
 func IsPair (arg Value) bool {
 	_, is_pair := arg.(*Pair)
 	return is_pair
+}
+
+// Conversion
+
+func ToPair (value Value) *Pair {
+	pair, is_pair := value.(*Pair)
+	if !is_pair {
+		panic(fmt.Sprintf ("Can not convert %T to *Pair", value))
+	}
+	return pair
 }
 
 /////////////////////////////////////////////////////////// List /////
@@ -432,7 +454,7 @@ func IsList (arg Value) bool {
 
 type PrimitiveProc struct {
 	name string
-	value Func
+	proc Proc
 }
 
 // Implementation of Value
@@ -445,10 +467,10 @@ func (self *PrimitiveProc) String () string {
 
 // Constructor
 
-func NewPrimitiveProc (name string, arg Func) *PrimitiveProc {
+func NewPrimitiveProc (name string, proc Proc) *PrimitiveProc {
 	var result PrimitiveProc
 	result.name = name
-	result.value = arg
+	result.proc = proc
 	return &result
 }
 
@@ -461,9 +483,8 @@ func IsPrimitiveProc (arg Value) bool {
 
 // Application
 
-func (self *PrimitiveProc) Apply (arg Value) (result Value) {
-	panic ("not implemented")
-	return nil
+func (self *PrimitiveProc) Apply (args []Value) Value {
+	return self.proc (args...)
 }
 
 //////////////////////////////////////////// Compound procedure /////
@@ -608,49 +629,76 @@ func (self *Environment) Eval (expr Value) (result Value) {
 	case *Pair:
 		car := expr.(*Pair).car
 		cdr := expr.(*Pair).cdr
+		symbol, is_symbol := car.(*Symbol)
 		switch {
+		case is_symbol && symbol.value == "quote":
+			result = cdr.(*Pair).car
+		case is_symbol && symbol.value == "set!":
+			assignment_variable := cdr.(*Pair).car
+			assignment_value := cdr.(*Pair).cdr.(*Pair).car
+			self.SetValue (assignment_variable, self.Eval (assignment_value))
+			result = NewUnspecified()
+		case is_symbol && symbol.value == "define":
+			definition_variable := cdr.(*Pair).car
+			definition_value := cdr.(*Pair).cdr.(*Pair).car
+			self.DefineValue (definition_variable, self.Eval (definition_value))
+			result = NewUnspecified()
+		case is_symbol && symbol.value == "if":
+			predicate := cdr.(*Pair).car
+			consequent := cdr.(*Pair).cdr.(*Pair).car
+			alternative := cdr.(*Pair).cdr.(*Pair).cdr.(*Pair).car
+			if IsTrue(self.Eval(predicate)) {
+				result = self.Eval(consequent)
+			} else {
+				result = self.Eval(alternative)
+			}
+		case is_symbol && symbol.value == "lambda":
+			panic ("not implemented")
+		case is_symbol && symbol.value == "begin":
+			result = self.EvalSequence (cdr)
+		case is_symbol && symbol.value == "cond":
+			panic ("not implemented")
 		default:
-			panic (fmt.Sprintf ("invalid argument %v in expression type %T",
-				car, expr))
-		case IsSymbol (car):
-			switch car.String() {
+			println("application")
+			value := self.Eval(car)
+			fmt.Printf ("value: %v\n", value)
+			switch value.(type) {
+			case *PrimitiveProc:
+				result = value.(*PrimitiveProc).Apply(self.EvalToSlice(cdr))
+			case *CompoundProc:
+				panic("not implemented")
 			default:
-				panic (fmt.Sprintf ("invalid symbol %v in expression type %T",
-					car.String(), expr))
-			case "quote":
-				result = cdr.(*Pair).car
-			case "set!":
-				assignment_variable := cdr.(*Pair).car
-				assignment_value := cdr.(*Pair).cdr.(*Pair).car
-				self.SetValue (assignment_variable, self.Eval (assignment_value))
-				result = NewUnspecified()
-			case "define":
-				definition_variable := cdr.(*Pair).car
-				definition_value := cdr.(*Pair).cdr.(*Pair).car
-				self.DefineValue (definition_variable, self.Eval (definition_value))
-				result = NewUnspecified()
-			case "if":
-				predicate := cdr.(*Pair).car
-				consequent := cdr.(*Pair).cdr.(*Pair).car
-				alternative := cdr.(*Pair).cdr.(*Pair).cdr.(*Pair).car
-				if IsTrue(self.Eval(predicate)) {
-					result = self.Eval(consequent)
-				} else {
-					result = self.Eval(alternative)
-				}
-			case "lambda":
-				panic ("not implemented")
-			case "begin":
-				result = self.EvalSequence (cdr)
-			case "cond":
-				panic ("not implemented")
+				panic("invalid application operator")
 			}
 		}
 	}
 	if TraceEval {
-		fmt.Printf ("eval: %s => %s\n", expr.String(), result.String())
+		if result == nil {
+			panic ("result undefined")
+		}
+		fmt.Printf ("TraceEval: %s => %s\n", expr.String(), result.String())
 	}
 	return result
+}
+
+// This function implements SICPs list-of-values.  It returns a slice
+// instead of a Value, because Gos application needs a slice. Also I
+// dislike the original name, because it does not make clear, that an
+// evaluation is done in the body.
+
+func (self *Environment) EvalToSlice (arg Value) []Value {
+	slice := make([]Value, ListLength (arg))
+	n := 0
+	for !IsEmpty(arg) {
+		pair, is_pair := arg.(*Pair)
+		if !is_pair {
+			panic (fmt.Sprintf("Need pair. Got &T.", arg))
+		}
+		slice[n] = self.Eval(pair.car)
+		arg = pair.cdr
+		n++
+	}
+	return slice	
 }
 
 // Evaluate a sequence of expressions.
@@ -679,13 +727,56 @@ func (env *Environment) Init () {
 	env.Define ("list", NewPrimitiveProc ("list", List))
 }
 
+/////////////////////////////////////////////// Helper functions /////
+
+// Calculate the length of a list.
+
+func ListLength (arg Value) int {
+	n := 0
+	for !IsEmpty(arg) {
+		n++
+		arg = arg.(*Pair).cdr
+	}
+	return n
+}
+
+///////////////////////////////////////////////// Function trace /////
+
+var TraceProc bool = false
+
+// Make a procedure which traces the arguments and the return value.
+
+func Trace (prefix string, proc *Proc) {
+	if TraceProc {
+		orig_proc := *proc
+		var new_proc Proc
+		new_proc = func (args ...Value) Value {
+			trace := fmt.Sprintf ("TraceProc: (%s", prefix)
+			for _, arg := range args {
+				trace += fmt.Sprintf (" %v", arg)
+			}
+			result := orig_proc (args...)
+			trace += fmt.Sprintf (") => %v", result)
+			fmt.Println (trace)
+			return result
+		}
+		proc = &new_proc
+	}
+}
+
 ////////////////////////////////////////////// Scheme primitives /////
 
 // See "Revised^6 Report on the Algorithmic Language Scheme" for a
 // description of the primitives:
 // http://www.r6rs.org/final/html/r6rs/r6rs.html
 
+
 func Cons (args ...Value) Value {
+	fmt.Print("cons:")
+	for i, a := range args {
+		fmt.Printf(" %d=%v", i, a)
+	}
+	fmt.Println()
 	var result Pair
 	result.car = args[0]
 	result.cdr = args[1]
@@ -706,3 +797,11 @@ func List (args ...Value) Value {
 	}
 	return Cons (args[0], List (args[1:]...))
 }
+
+func Length (args ...Value) Value {
+	if len(args) != 1 {
+		panic ("Wrong number of arguments")
+	}
+	panic ("not implemented")
+}
+

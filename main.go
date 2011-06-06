@@ -8,6 +8,10 @@ import (
 	scm "./scheme"
 )
 
+func init () {
+	scm.TraceEval = true
+	scm.TraceProc = true
+}
 
 func main () {
 	unspecified := scm.NewUnspecified()
@@ -27,15 +31,18 @@ func main () {
 	// same with scm.NewList
 	//println (scm.NewList (scm.NewSymbol("+"), 1, 2))
 
-	scm.TraceEval = true
 	env := scm.NewEnvironment()
 	env.Init ()
 	// Eval: (if #f 1 2)
-	if_expr := scm.NewList (scm.NewSymbol ("if"), false, 1, 2)
-	env.Eval(if_expr)
+	env.Eval(scm.NewList (scm.NewSymbol ("if"), false, 1, 2))
 	// Eval: (begin 1 2)
-	begin_expr := scm.NewList (scm.NewSymbol ("begin"), 1, 2)
-	env.Eval(begin_expr)
+	env.Eval(scm.NewList (scm.NewSymbol ("begin"), 1, 2))
 	// Eval: cons
 	env.Eval(scm.NewSymbol("cons"))
+	// Eval: (quote a)
+	env.Eval(scm.NewList(scm.NewSymbol("quote"), scm.NewSymbol("a")))
+	// Eval: (cons 1 2)
+	env.Eval(scm.NewList (scm.NewSymbol ("cons"), 1, 2))
+	// Eval: (car (cons 1 2))
+	env.Eval(scm.NewPair (scm.NewSymbol ("car"), scm.NewList (scm.NewSymbol ("cons"), 1, 2)))
 }

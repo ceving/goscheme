@@ -71,3 +71,10 @@ format
 (define (a b)
   (display b))
 a
+
+(length 5)
+(length (cons 1 2))
+(length (list 1 2))
+(length)
+(length (list))
+(length (list 1) (list 1 2))
