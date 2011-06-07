@@ -81,3 +81,14 @@ a
 (length)
 (length (list))
 (length (list 1) (list 1 2))
+
+(list->vector (list 1 2 3))
+
+(lambda () 1)
+(pair? '())
+(null? '())
+(list? '())
+
+(map (lambda (x)
+       1)
+     (list))

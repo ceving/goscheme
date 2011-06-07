@@ -34,7 +34,7 @@ func main () {
 	//println (scm.NewList (scm.NewSymbol("+"), 1, 2))
 	println()
 
-	env := scm.NewEnvironment()
+	env := scm.NewToplevelEnv()
 	env.Init ()
 	// Eval: (if #f 1 2)
 	scm.NewList(scm.NewSymbol("if"), false, 1, 2).Eval(env)
@@ -56,5 +56,21 @@ func main () {
 	println()
 	// Eval: (cdr (cons 1 2))
 	scm.NewList(scm.NewSymbol("cdr"), scm.NewList(scm.NewSymbol("cons"), 1, 2)).Eval(env)
+	println()
+	// Eval: (lambda () 1)
+	scm.NewList(scm.NewSymbol("lambda"), scm.NewEmpty(), 1).Eval(env)
+	println()
+	// Eval: ((lambda () 1))
+	scm.NewList(scm.NewList(scm.NewSymbol("lambda"), scm.NewEmpty(), 1)).Eval(env)
+	println()
+	// Eval: (define a (lambda () 1))
+	scm.NewList(scm.NewSymbol("define"), scm.NewSymbol("a"), 
+		scm.NewList(scm.NewSymbol("lambda"), scm.NewEmpty(), 1)).Eval(env)
+	println()
+	// Eval: a
+	scm.NewSymbol("a").Eval(env)
+	println()
+	// Eval: (a)
+	scm.NewList(scm.NewSymbol("a")).Eval(env)
 	println()
 }

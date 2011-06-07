@@ -1,3 +1,4 @@
+//
 // GoScheme - a basic evaluator for Scheme expression written in Go
 //
 // Copyright (C) 2011  Sascha Ziemann <ceving@gmail.com>
@@ -14,6 +15,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with GoScheme.  If not, see <http://www.gnu.org/licenses/>.
+//
 
 package scheme
 
@@ -30,20 +32,27 @@ type Any interface {}
 
 type Value interface {
 	String () string
-	Eval (*Environment) Value
+	Eval (Environment) Value
 }
 
 type Procedure interface {
-	Apply (...Value) Value
+	Apply ([]Value) Value
 }
 
-type Proc func (args ...Value) Value
+type Proc func (...Value) Value
+
+type Environment interface {
+	Extend () Environment
+	Define (string, Value)
+	Set (string, Value)
+	Get (string) Value
+}
+
+// Constructor
 
 func NewValue (arg Any) Value {
 	var result Value
 	switch arg.(type) {
-	default:
-		panic (fmt.Sprintf ("Can not convert %T to Value", arg))
 	case Value:
 		result = arg.(Value)
 	case int, int8, uint8, int16, uint16, int32, uint32, int64, uint64:
@@ -56,9 +65,24 @@ func NewValue (arg Any) Value {
 		result = NewString (arg.(string))
 	case bool:
 		result = NewBoolean (arg)
+	default:
+		panic (fmt.Sprintf ("Can not convert %T to Value", arg))
 	}
 	return result
 }
+
+/*
+func NewProcedure (arg Value) Procedure {
+	switch arg.(type) {
+	case *PrimitiveProcedure:
+		return arg.(*PrimitiveProcedure)
+	case *CompoundProcedure:
+		return arg.(*CompoundProcedure)
+	default:
+		panic (fmt.Sprintf("invalid procedure type %T", arg))
+	}
+}
+*/
 
 //////////////////////////////////////////////////// Unspecified /////
 
@@ -85,7 +109,7 @@ func (self *Unspecified) String () string {
 
 // Evaluation
 
-func (self *Unspecified) Eval (*Environment) Value {
+func (self *Unspecified) Eval (Environment) Value {
 	return self
 }
 
@@ -143,7 +167,7 @@ func (self *Integer) String () string {
 
 // Evaluation
 
-func (self *Integer) Eval (*Environment) Value {
+func (self *Integer) Eval (Environment) Value {
 	return self
 }
 
@@ -183,7 +207,7 @@ func (self *Rational) String () string {
 
 // Evaluation
 
-func (self *Rational) Eval (*Environment) Value {
+func (self *Rational) Eval (Environment) Value {
 	return self
 }
 
@@ -225,7 +249,7 @@ func (self *Real) String () string {
 
 // Evaluation
 
-func (self *Real) Eval (*Environment) Value {
+func (self *Real) Eval (Environment) Value {
 	return self
 }
 
@@ -270,21 +294,21 @@ func (self *Complex) String () string {
 
 // Evaluation
 
-func (self *Complex) Eval (*Environment) Value {
+func (self *Complex) Eval (Environment) Value {
 	return self
 }
 
 ///////////////////////////////////////////////////////// Symbol /////
 
 type Symbol struct {
-	value string
+	name string
 }
 
 // Constructor
 
-func NewSymbol (value string) *Symbol {
+func NewSymbol (name string) *Symbol {
 	var result Symbol
-	result.value = value
+	result.name = name
 	return &result
 }
 
@@ -298,13 +322,16 @@ func IsSymbol (arg Value) bool {
 // String representation
 
 func (self *Symbol) String () string {
-	return self.value
+	return self.name
 }
 
 // Evaluation
 
-func (self *Symbol) Eval (env *Environment) Value {
-	return env.Get(self.value)
+func (self *Symbol) Eval (env Environment) Value {
+	eval_trace ("expression", self.name)
+	result := env.Get(self.name)
+	eval_trace ("result", fmt.Sprintf ("%v", result))
+	return result
 }
 
 ///////////////////////////////////////////////////////// String /////
@@ -336,7 +363,7 @@ func (self *String) String () string {
 
 // Evaluation
 
-func (self *String) Eval (*Environment) Value {
+func (self *String) Eval (Environment) Value {
 	return self
 }
 
@@ -384,7 +411,7 @@ func (self *Boolean) String () string {
 
 // Evaluation
 
-func (self *Boolean) Eval (*Environment) Value {
+func (self *Boolean) Eval (Environment) Value {
 	return self
 }
 
@@ -413,7 +440,7 @@ func (self *Empty) String () string {
 
 // Evaluation
 
-func (self *Empty) Eval (*Environment) Value {
+func (self *Empty) Eval (Environment) Value {
 	return self
 }
 
@@ -461,22 +488,23 @@ func (self *Pair) String () string {
 // chapter "Metalinguistic Abstraction":
 // http://mitpress.mit.edu/sicp/full-text/book/book-Z-H-25.html#%_chap_4
 
-func (self *Pair) Eval (env *Environment) (result Value) {
+func (self *Pair) Eval (env Environment) (result Value) {
+	eval_trace ("expression", fmt.Sprintf ("%v", self))
 	symbol, is_symbol := self.car.(*Symbol)
 	switch {
-	case is_symbol && symbol.value == "quote":
+	case is_symbol && symbol.name == "quote":
 		result = self.cdr.(*Pair).car
-	case is_symbol && symbol.value == "set!":
+	case is_symbol && symbol.name == "set!":
 		assignment_variable := self.cdr.(*Pair).car
 		assignment_value    := self.cdr.(*Pair).cdr.(*Pair).car
-		env.SetValue(assignment_variable, assignment_value.Eval(env))
+		env.Set(assignment_variable.(*Symbol).name, assignment_value.Eval(env))
 		result = NewUnspecified()
-	case is_symbol && symbol.value == "define":
+	case is_symbol && symbol.name == "define":
 		definition_variable := self.cdr.(*Pair).car
 		definition_value    := self.cdr.(*Pair).cdr.(*Pair).car
-		env.DefineValue(definition_variable, definition_value.Eval(env))
+		env.Define(definition_variable.(*Symbol).name, definition_value.Eval(env))
 		result = NewUnspecified()
-	case is_symbol && symbol.value == "if":
+	case is_symbol && symbol.name == "if":
 		predicate   := self.cdr.(*Pair).car
 		consequent  := self.cdr.(*Pair).cdr.(*Pair).car
 		alternative := self.cdr.(*Pair).cdr.(*Pair).cdr.(*Pair).car
@@ -485,69 +513,59 @@ func (self *Pair) Eval (env *Environment) (result Value) {
 		} else {
 			result = alternative.Eval(env)
 		}
-	case is_symbol && symbol.value == "lambda":
-		panic ("not implemented")
-	case is_symbol && symbol.value == "begin":
+	case is_symbol && symbol.name == "lambda":
+		arguments := self.cdr.(*Pair).car
+		body      := self.cdr.(*Pair).cdr
+		result = NewCompoundProc (arguments, body, env)
+	case is_symbol && symbol.name == "begin":
 		result = self.cdr.(*Pair).EvalSequence(env)
-	case is_symbol && symbol.value == "cond":
+	case is_symbol && symbol.name == "cond":
 		panic ("not implemented")
 	default:
 		eval_trace ("application", "")
-		operator := self.car.Eval(env)
-		eval_trace ("operator", fmt.Sprintf ("%v", operator))
-		switch operator.(type) {
-		case *PrimitiveProc:
-			args, is_pair := self.cdr.(*Pair)
-			if is_pair {
-				arguments := args.EvalToSlice(env)
-				eval_trace ("arguments", fmt.Sprintf ("%v", arguments))
-				result = operator.(*PrimitiveProc).Apply(arguments...)
-			} else {
-				eval_trace ("arguments", "[]")
-				result = operator.(*PrimitiveProc).Apply()
-			}
-		case *CompoundProc:
-			panic("not implemented")
-		default:
-			panic("invalid application operator")
-		}
+		proc := self.car.Eval(env).(Procedure)
+		eval_trace ("proc", fmt.Sprintf ("%v", proc))
+		args := eval_to_slice(self.cdr, env)
+		eval_trace ("args", fmt.Sprintf ("%v", args))
+		result = proc.Apply(args)
 	}
+	eval_trace ("result", fmt.Sprintf ("%v", result))
 	return result
 }
 
 // This function implements SICPs list-of-values.  It returns a slice
-// instead of a Value, because Gos application needs a slice. Also I
+// instead of a Value, because Gos functions need slices. Also I
 // dislike the original name, because it does not make clear, that an
 // evaluation is done in the body.
 
-func (self *Pair) EvalToSlice (env *Environment) []Value {
-	l, is_list := ListLength (self)
+func eval_to_slice (arg Value, env Environment) (result []Value) {
+	l, is_list := ListLength (arg)
 	if !is_list {
 		panic ("wrong type argument")
 	}
-	slice := make([]Value, l)
-	if l == 0 { return slice }
+	result = make([]Value, l)
+	if l == 0 { return }
 	i := 0
+	pair := arg.(*Pair)
 	for l--; i < l; i++ {
-		slice[i] = self.car.Eval(env)
-		self = self.cdr.(*Pair)
+		result[i] = pair.car.Eval(env)
+		pair = pair.cdr.(*Pair)
 	}
-	slice[i] = self.car.Eval(env)
-	return slice	
+	result[i] = pair.car.Eval(env)
+	return
 }
 
 // Evaluate a sequence of expressions.
 
-func (self *Pair) EvalSequence (env *Environment) (result Value) {
+func (self *Pair) EvalSequence (env Environment) (result Value) {
 	if IsEmpty (self.cdr) {
 		result = self.car.Eval(env)
 	} else {
 		self.car.Eval(env)
 		result = self.cdr.(*Pair).EvalSequence(env)
 	}
-	return result
+	return
 }
-
 
 // Conversion
 
@@ -595,19 +613,42 @@ func ListLength (arg Value) (length int, is_list bool) {
 	return
 }
 
+///////////////////////////////////////////////////////// Vector /////
+
+type Vector struct {
+	value []Value
+}
+
+// Constructor
+
+func NewVector (args ...Any) Value {
+	panic ("not implemented")
+}
+
+// Predicate
+
+func IsVector (arg Value) bool {
+	_, is_vector := arg.(*Vector)
+	return is_vector
+}
+
+// String representation
+
+func (self *Vector) String () string {
+	panic ("not implemented")
+}
+
+// Evaluation
+
+func (self *Vector) Eval (env Environment) Value {
+	panic ("not implemented")
+}
+
 //////////////////////////////////////////// Primitive procedure /////
 
 type PrimitiveProc struct {
 	name string
 	proc Proc
-}
-
-// Evaluation
-
-func (*PrimitiveProc) Eval (env *Environment) Value { return nil }
-
-func (self *PrimitiveProc) String () string {
-	return fmt.Sprintf ("#<primitive-procedure %s>", self.name)
 }
 
 // Constructor
@@ -626,31 +667,49 @@ func IsPrimitiveProc (arg Value) bool {
 	return is_primitiveproc
 }
 
+// String representation
+
+func (self *PrimitiveProc) String () string {
+	return fmt.Sprintf ("#<primitive-procedure %s>", self.name)
+}
+
+// Evaluation
+
+func (self *PrimitiveProc) Eval (env Environment) Value {
+	return self
+}
+
 // Application
 
-func (self *PrimitiveProc) Apply (args ...Value) Value {
+func (self *PrimitiveProc) Apply (args []Value) Value {
 	return self.proc(args...)
 }
 
 //////////////////////////////////////////// Compound procedure /////
 
 type CompoundProc struct {
-	name string
-}
-
-// Evaluation
-
-func (*CompoundProc) Eval (env *Environment) Value { return nil }
-
-func (self *CompoundProc) String () string {
-	return fmt.Sprintf ("#<procedure %s>", self.name)
+	parameters []string
+	body *Pair
+	env Environment
 }
 
 // Constructor
 
-func NewCompoundProc (name string) *CompoundProc {
-	panic ("not implemented")
-	return nil
+func NewCompoundProc (parameters Value, body Value, env Environment) *CompoundProc {
+	var result CompoundProc
+	var pair *Pair
+	for !IsEmpty(parameters) {
+		pair = parameters.(*Pair)
+		symbol, is_symbol := pair.car.(*Symbol)
+		if !is_symbol {
+			panic (fmt.Sprintf ("invalid function parameter %v", pair.car))
+		}
+		result.parameters = append (result.parameters, symbol.name)
+		parameters = pair.cdr
+	}
+	result.body = body.(*Pair)
+	result.env = env
+	return &result
 }
 
 // Predicate
@@ -660,190 +719,203 @@ func IsCompoundProc (arg Value) bool {
 	return is_compoundproc
 }
 
-// Application
+// String representation
 
-func (self *CompoundProc) Apply (arg Value) (result Value) {
-	panic ("not implemented")
-	return nil
-}
-
-//////////////////////////////////////////////////// Environment /////
-
-type Environment struct {
-	parent *Environment
-	current map [string] Value
+func (self *CompoundProc) String () string {
+	return "#<compound-procedure>"
 }
 
 // Evaluation
 
-func (self *Environment) Eval (env *Environment) Value { return self }
+func (self *CompoundProc) Eval (env Environment) Value { 
+	return self
+}
 
-// String representation
+// Application
 
-func (self *Environment) String () string {
-	return "#<environment>"
+func (self *CompoundProc) Apply (args []Value) (result Value) {
+	if len(self.parameters) == 0 {
+		result = self.body.EvalSequence(self.env)
+	} else {
+		env := self.env.Extend()
+		for i, name := range self.parameters {
+			env.Define (name, args[i])
+		}
+		result = self.body.EvalSequence(env)
+	}
+	return
+}
+
+////////////////////////////////////////// Top Level Environment /////
+
+type ToplevelEnv struct {
+	current map [string] Value
 }
 
 // Constructor
 
-func NewEnvironment () *Environment {
-	var result Environment
-	result.parent = nil
-	result.current = make(map[string] Value)
-	return &result
-}
-
-func (self *Environment) NewEnvironment () *Environment {
-	var result Environment
-	result.parent = self
+func NewToplevelEnv () *ToplevelEnv {
+	var result ToplevelEnv
 	result.current = make(map[string] Value)
 	return &result
 }
 
 // Predicate
 
-func IsEnvironment (arg Value) bool {
-	_, is_environment := arg.(*Environment)
-	return is_environment
+func IsTopLevelEnv (arg Value) bool {
+	_, is_toplevelenv := arg.(*ToplevelEnv)
+	return is_toplevelenv
 }
 
-// Add a definition to the environment
+// String representation
 
-func (self *Environment) Define (name string, value Value) {
+func (self *ToplevelEnv) String () string {
+	return "#<toplevel-environment>"
+}
+
+// Evaluation
+
+func (self *ToplevelEnv) Eval (Environment) Value {
+	return self
+}
+
+// Extend the environment by deriving a new procedure environment.
+
+func (self *ToplevelEnv) Extend () Environment {
+	return NewProcedureEnv(self)
+}
+
+// Add a definition to the environment.
+
+func (self *ToplevelEnv) Define (name string, value Value) {
 	self.current[name] = value
 }
 
-func (self *Environment) DefineValue (name Value, value Value) {
-	self.Define(name.(*Symbol).value, value)
-}
+// Set a variable in the environment to the given value.
 
-// Get the value of a variable from the environment
-
-func (self *Environment) Get (name string) Value {
-	value, defined := self.current[name]
-	if !defined {
-		if self.parent == nil {
-			panic (fmt.Sprintf ("unbound variable '%s'", name))
-		} else {
-			value = self.parent.Get(name)
-		}
-	}
-	return value
-}
-
-func (self *Environment) GetValue (name Value) Value {
-	return self.Get(name.(*Symbol).value)
-}
-
-// Set a variable in the environment to the given value
-
-func (self *Environment) Set (name string, value Value) {
+func (self *ToplevelEnv) Set (name string, value Value) {
 	_, defined := self.current[name]
 	if defined {
 		self.current[name] = value
 	} else {
-		if self.parent == nil {
-			panic (fmt.Sprintf ("unbound variable '%s'", name))
-		} else {
-			self.parent.Set (name, value)
-		}
+		panic (fmt.Sprintf ("undefined variable '%s'", name))
 	}
 }
 
-func (self *Environment) SetValue (name Value, value Value) {
-	self.Set (name.(*Symbol).value, value)
-}
+// Get the value of a variable from the environment.
 
-// Evaluate an expression in the environment
-//
-
-var TraceEval bool = false
-var eval_depth int = 0
-
-func eval_trace (tag string, msg string) {
-	if TraceEval {
-		fmt.Printf ("EVAL: %s%s: %s\n",
-			indent(2, eval_depth), tag, msg)
+func (self *ToplevelEnv) Get (name string) Value {
+	value, defined := self.current[name]
+	if !defined {
+		panic (fmt.Sprintf ("unbound variable '%s'", name))
 	}
+	return value
 }
-/*
-func (self *Environment) eval (expr Value) (result Value) {
-	eval_trace ("expression", expr.String())
-	if TraceEval { eval_depth++ }
-	switch expr.(type) {
-	default:
-		panic (fmt.Sprintf ("invalid expression type %T", expr))
-	case *Integer, *Rational, *Real, *Complex, *String, *Boolean, *Unspecified:
-		// Self evaluating
-		result = expr.Eval(self)
-	case *Symbol:
-		// Variable
-		result = self.Get(expr.(*Symbol).String())
-	case *Pair:
-		car := expr.(*Pair).car
-		cdr := expr.(*Pair).cdr
-		symbol, is_symbol := car.(*Symbol)
-		switch {
-		case is_symbol && symbol.value == "quote":
-			result = cdr.(*Pair).car
-		case is_symbol && symbol.value == "set!":
-			assignment_variable := cdr.(*Pair).car
-			assignment_value := cdr.(*Pair).cdr.(*Pair).car
-			self.SetValue (assignment_variable, self.Eval (assignment_value))
-			result = NewUnspecified()
-		case is_symbol && symbol.value == "define":
-			definition_variable := cdr.(*Pair).car
-			definition_value := cdr.(*Pair).cdr.(*Pair).car
-			self.DefineValue (definition_variable, self.Eval (definition_value))
-			result = NewUnspecified()
-		case is_symbol && symbol.value == "if":
-			predicate := cdr.(*Pair).car
-			consequent := cdr.(*Pair).cdr.(*Pair).car
-			alternative := cdr.(*Pair).cdr.(*Pair).cdr.(*Pair).car
-			if IsTrue(self.Eval(predicate)) {
-				result = self.Eval(consequent)
-			} else {
-				result = self.Eval(alternative)
-			}
-		case is_symbol && symbol.value == "lambda":
-			panic ("not implemented")
-		case is_symbol && symbol.value == "begin":
-			result = self.EvalSequence (cdr)
-		case is_symbol && symbol.value == "cond":
-			panic ("not implemented")
-		default:
-			eval_trace ("application", "")
-			operator := self.Eval(car)
-			eval_trace ("operator", fmt.Sprintf ("%v", operator))
-			arguments := self.EvalToSlice(cdr)
-			eval_trace ("arguments", fmt.Sprintf ("%v", arguments))
-			switch operator.(type) {
-			case *PrimitiveProc:
-				result = operator.(*PrimitiveProc).Apply(arguments)
-			case *CompoundProc:
-				panic("not implemented")
-			default:
-				panic("invalid application operator")
-			}
-		}
-	}
-	if result == nil { panic ("result undefined") }
-	if TraceEval { eval_depth-- }
-	eval_trace ("result", fmt.Sprintf ("%v => %v", expr, result))
-	return result
-}
-*/
 
-// Initialize the environment with the Scheme primitives
+// Initialize the environment with the Scheme primitives.
 
-func (env *Environment) Init () {
+func (env *ToplevelEnv) Init () {
 	env.Define ("cons", NewPrimitiveProc ("cons", Cons))
 	env.Define ("car",  NewPrimitiveProc ("car",  Car))
 	env.Define ("cdr",  NewPrimitiveProc ("cdr",  Cdr))
 	env.Define ("list", NewPrimitiveProc ("list", List))
 }
 
+////////////////////////////////////////// Procedure Environment /////
+
+type taggedValue struct {
+	tag string
+	value Value
+}
+
+type ProcedureEnv struct {
+	parent Environment
+	current []taggedValue
+}
+
+// Constructor
+
+func NewProcedureEnv (parent Environment) *ProcedureEnv {
+	var result ProcedureEnv
+	result.parent  = parent
+	result.current = make([]taggedValue, 0)
+	return &result
+}
+
+// Predicate
+
+func IsEnvironment (arg Value) bool {
+	_, is_environment := arg.(Environment)
+	return is_environment
+}
+
+// Evaluation
+
+func (self *ProcedureEnv) Eval (env Environment) Value {
+	return self
+}
+
+// String representation
+
+func (self *ProcedureEnv) String () string {
+	return "#<procedure-environment>"
+}
+
+// Extend the environment by creating a new child environment.
+
+func (self *ProcedureEnv) Extend () Environment {
+	return NewProcedureEnv(self)
+}
+
+// Add a definition to the environment.
+
+func (self *ProcedureEnv) Define (name string, value Value) {
+	self.current = append(self.current, taggedValue{name, value})
+}
+
+// Set a variable in the environment to the given value.
+
+func (self *ProcedureEnv) Set (name string, value Value) {
+	for _, tv := range self.current {
+		if tv.tag == name {
+			tv.value = value
+			return
+		}
+	}
+	self.parent.Set(name, value)
+}
+
+// Get the value of a variable from the environment.
+
+func (self *ProcedureEnv) Get (name string) Value {
+	for _, tv := range self.current {
+		if tv.tag == name {
+			return tv.value
+		}
+	}
+	return self.parent.Get(name)
+}
+
 /////////////////////////////////////////////// Helper functions /////
+
+// Generate evaluation trace message.
+
+var TraceEval bool = false
+var eval_depth int = 0
+
+func eval_trace (tag string, msg string) {
+	if TraceEval {
+		if msg == "" {
+			fmt.Printf ("EVAL: %s%s\n",
+				indent(2, eval_depth), tag)
+		} else {
+			fmt.Printf ("EVAL: %s%s: %s\n",
+				indent(2, eval_depth), tag, msg)
+		}
+	}
+}
+
+// Create an indention string of spaces.
 
 func indent (step int, level int) string {
 	var str []byte = make([]byte, step*level)
