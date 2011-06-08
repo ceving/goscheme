@@ -43,9 +43,9 @@ type Proc func (...Value) Value
 
 type Environment interface {
 	Extend () Environment
-	Define (string, Value)
-	Set (string, Value)
-	Get (string) Value
+	Define (Symbol, Value)
+	Set (Symbol, Value)
+	Get (Symbol) Value
 }
 
 // Constructor
@@ -298,43 +298,84 @@ func (self *Complex) Eval (Environment) Value {
 	return self
 }
 
+////////////////////////////////////////////////////// Character /////
+
+type Char int32
+
 ///////////////////////////////////////////////////////// Symbol /////
 
-type Symbol struct {
-	name string
-}
+type Symbol string
 
 // Constructor
 
-func NewSymbol (name string) *Symbol {
-	var result Symbol
-	result.name = name
-	return &result
+func NewSymbol (name string) Symbol {
+	return Symbol(name)
 }
 
 // Predicate
 
 func IsSymbol (arg Value) bool {
-	_, is_symbol := arg.(*Symbol)
+	_, is_symbol := arg.(Symbol)
 	return is_symbol
 }
 
 // String representation
 
-func (self *Symbol) String () string {
-	return self.name
+func (self Symbol) String () string {
+	return string(self)
 }
 
 // Evaluation
 
-func (self *Symbol) Eval (env Environment) Value {
-	eval_trace ("expression", self.name)
-	result := env.Get(self.name)
+func (self Symbol) Eval (env Environment) Value {
+	eval_trace ("expression", string(self))
+	result := env.Get(self)
 	eval_trace ("result", fmt.Sprintf ("%v", result))
 	return result
 }
 
-///////////////////////////////////////////////////////// String /////
+// Equality test
+
+func (self Symbol) Is (str Any) bool {
+	switch str.(type) {
+	case string:
+		return str.(string) == string(self)
+	case Symbol:
+		return string(str.(Symbol)) == string(self)
+	}
+	return false
+}
+
+/////////////////////////////////////////////// Immutable String /////
+
+type ImmutableString string
+
+// Constructor
+
+func NewImmutableString (name string) ImmutableString {
+	return ImmutableString(name)
+}
+
+// Predicate
+
+func IsImmutableString (arg Value) bool {
+	_, is_immutablestring := arg.(ImmutableString)
+	return is_immutablestring
+}
+
+// String representation
+
+func (self ImmutableString) String () string {
+	return string(self)
+}
+
+// Evaluation
+
+func (self ImmutableString) Eval (env Environment) Value {
+	return self
+}
+
+///////////////////////////////////////////////// Mutable String /////
 
 type String struct {
 	value *utf8.String
@@ -369,50 +410,54 @@ func (self *String) Eval (Environment) Value {
 
 //////////////////////////////////////////////////////// Boolean /////
 
-type Boolean struct {
-	value bool
-}
+type Boolean bool
 
 // Constructor
 
-func NewBoolean (arg Any) *Boolean {
+func NewBoolean (arg Any) Boolean {
 	var result Boolean
 	switch arg.(type) {
-	default:
-		result.value = true
+	case string:
+		if arg == "#f" { result = true }
 	case bool:
-		result.value = arg.(bool)
+		result = Boolean(arg.(bool))
+	case Boolean:
+		result = arg.(Boolean)
+	default:
+		result = true
 	}
-	return &result
+	return result
 }
 
 // Predicate
 
 func IsBoolean (arg Value) bool {
-	_, is_boolean := arg.(*Boolean)
+	_, is_boolean := arg.(Boolean)
 	return is_boolean
-}
-
-func IsFalse (arg Value) bool {
-	value, is_boolean := arg.(*Boolean)
-	return is_boolean && value.value == false
-}
-
-func IsTrue (arg Value) bool {
-	return !IsFalse(arg)
 }
 
 // String representation
 
-func (self *Boolean) String () string {
-	if self.value {	return "#t"	}
+func (self Boolean) String () string {
+	if self { return "#t" }
 	return "#f"
 }
 
 // Evaluation
 
-func (self *Boolean) Eval (Environment) Value {
+func (self Boolean) Eval (Environment) Value {
 	return self
+}
+
+// Equality tests
+
+func IsFalse (arg Value) bool {
+	value, is_boolean := arg.(Boolean)
+	return is_boolean && value == false
+}
+
+func IsTrue (arg Value) bool {
+	return !IsFalse(arg)
 }
 
 ///////////////////////////////////////////////////// Empty list /////
@@ -490,21 +535,21 @@ func (self *Pair) String () string {
 
 func (self *Pair) Eval (env Environment) (result Value) {
 	eval_trace ("expression", fmt.Sprintf ("%v", self))
-	symbol, is_symbol := self.car.(*Symbol)
+	symbol, is_symbol := self.car.(Symbol)
 	switch {
-	case is_symbol && symbol.name == "quote":
+	case is_symbol && symbol.Is("quote"):
 		result = self.cdr.(*Pair).car
-	case is_symbol && symbol.name == "set!":
+	case is_symbol && symbol.Is("set!"):
 		assignment_variable := self.cdr.(*Pair).car
 		assignment_value    := self.cdr.(*Pair).cdr.(*Pair).car
-		env.Set(assignment_variable.(*Symbol).name, assignment_value.Eval(env))
+		env.Set(assignment_variable.(Symbol), assignment_value.Eval(env))
 		result = NewUnspecified()
-	case is_symbol && symbol.name == "define":
+	case is_symbol && symbol.Is("define"):
 		definition_variable := self.cdr.(*Pair).car
 		definition_value    := self.cdr.(*Pair).cdr.(*Pair).car
-		env.Define(definition_variable.(*Symbol).name, definition_value.Eval(env))
+		env.Define(definition_variable.(Symbol), definition_value.Eval(env))
 		result = NewUnspecified()
-	case is_symbol && symbol.name == "if":
+	case is_symbol && symbol.Is("if"):
 		predicate   := self.cdr.(*Pair).car
 		consequent  := self.cdr.(*Pair).cdr.(*Pair).car
 		alternative := self.cdr.(*Pair).cdr.(*Pair).cdr.(*Pair).car
@@ -513,13 +558,13 @@ func (self *Pair) Eval (env Environment) (result Value) {
 		} else {
 			result = alternative.Eval(env)
 		}
-	case is_symbol && symbol.name == "lambda":
+	case is_symbol && symbol.Is("lambda"):
 		arguments := self.cdr.(*Pair).car
 		body      := self.cdr.(*Pair).cdr
 		result = NewCompoundProc (arguments, body, env)
-	case is_symbol && symbol.name == "begin":
+	case is_symbol && symbol.Is("begin"):
 		result = self.cdr.(*Pair).EvalSequence(env)
-	case is_symbol && symbol.name == "cond":
+	case is_symbol && symbol.Is("cond"):
 		panic ("not implemented")
 	default:
 		eval_trace ("application", "")
@@ -718,7 +763,7 @@ func (self *PrimitiveProc) Apply (args []Value) Value {
 //////////////////////////////////////////// Compound procedure /////
 
 type CompoundProc struct {
-	parameters []string
+	parameters []Symbol
 	body *Pair
 	env Environment
 }
@@ -730,11 +775,11 @@ func NewCompoundProc (parameters Value, body Value, env Environment) *CompoundPr
 	var pair *Pair
 	for !IsEmpty(parameters) {
 		pair = parameters.(*Pair)
-		symbol, is_symbol := pair.car.(*Symbol)
+		symbol, is_symbol := pair.car.(Symbol)
 		if !is_symbol {
 			panic (fmt.Sprintf ("invalid function parameter %v", pair.car))
 		}
-		result.parameters = append (result.parameters, symbol.name)
+		result.parameters = append (result.parameters, symbol)
 		parameters = pair.cdr
 	}
 	result.body = body.(*Pair)
@@ -779,14 +824,14 @@ func (self *CompoundProc) Apply (args []Value) (result Value) {
 ////////////////////////////////////////// Top Level Environment /////
 
 type ToplevelEnv struct {
-	current map [string] Value
+	current map [Symbol] Value
 }
 
 // Constructor
 
 func NewToplevelEnv () *ToplevelEnv {
 	var result ToplevelEnv
-	result.current = make(map[string] Value)
+	result.current = make(map[Symbol] Value)
 	return &result
 }
 
@@ -817,13 +862,13 @@ func (self *ToplevelEnv) Extend () Environment {
 
 // Add a definition to the environment.
 
-func (self *ToplevelEnv) Define (name string, value Value) {
+func (self *ToplevelEnv) Define (name Symbol, value Value) {
 	self.current[name] = value
 }
 
 // Set a variable in the environment to the given value.
 
-func (self *ToplevelEnv) Set (name string, value Value) {
+func (self *ToplevelEnv) Set (name Symbol, value Value) {
 	_, defined := self.current[name]
 	if defined {
 		self.current[name] = value
@@ -834,7 +879,7 @@ func (self *ToplevelEnv) Set (name string, value Value) {
 
 // Get the value of a variable from the environment.
 
-func (self *ToplevelEnv) Get (name string) Value {
+func (self *ToplevelEnv) Get (name Symbol) Value {
 	value, defined := self.current[name]
 	if !defined {
 		panic (fmt.Sprintf ("unbound variable '%s'", name))
@@ -854,7 +899,7 @@ func (env *ToplevelEnv) Init () {
 ////////////////////////////////////////// Procedure Environment /////
 
 type taggedValue struct {
-	tag string
+	tag Symbol
 	value Value
 }
 
@@ -899,13 +944,13 @@ func (self *ProcedureEnv) Extend () Environment {
 
 // Add a definition to the environment.
 
-func (self *ProcedureEnv) Define (name string, value Value) {
+func (self *ProcedureEnv) Define (name Symbol, value Value) {
 	self.current = append(self.current, taggedValue{name, value})
 }
 
 // Set a variable in the environment to the given value.
 
-func (self *ProcedureEnv) Set (name string, value Value) {
+func (self *ProcedureEnv) Set (name Symbol, value Value) {
 	for _, tv := range self.current {
 		if tv.tag == name {
 			tv.value = value
@@ -917,7 +962,7 @@ func (self *ProcedureEnv) Set (name string, value Value) {
 
 // Get the value of a variable from the environment.
 
-func (self *ProcedureEnv) Get (name string) Value {
+func (self *ProcedureEnv) Get (name Symbol) Value {
 	for _, tv := range self.current {
 		if tv.tag == name {
 			return tv.value
