@@ -1,0 +1,5 @@
+# robots.txt for http://www-pu.informatik.uni-tuebingen.de
+
+User-agent: *
+Disallow: /software/
+Disallow: /info-i-0405/gruppen.html

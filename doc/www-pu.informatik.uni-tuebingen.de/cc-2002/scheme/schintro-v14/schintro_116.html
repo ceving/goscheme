@@ -1,0 +1,440 @@
+<HTML>
+<HEAD>
+<!-- This HTML file has been created by texi2html 1.45
+     from schintro.txi on 19 Febuary 1997 -->
+
+<TITLE>An Introduction to Scheme and its Implementation - Recursive Evaluation</TITLE>
+</HEAD>
+<BODY>
+Go to the <A HREF="schintro_1.html">first</A>, <A HREF="schintro_115.html">previous</A>, <A HREF="schintro_117.html">next</A>, <A HREF="schintro_143.html">last</A> section, <A HREF="schintro_toc.html">table of contents</A>.
+<HR>
+
+
+<H3><A NAME="SEC139" HREF="schintro_toc.html#SEC139">Recursive Evaluation</A></H3>
+
+<P>
+<A NAME="IDX131"></A>
+<A NAME="IDX132"></A>
+
+</P>
+<P>
+The evaluator is the core of the interpreter--it's what does all of
+the interesting work to evaluate complicated expressions.  The
+reader translates textual expressions into a convenient data structure,
+and the evaluator actually <EM>interprets</EM> it, i.e., figures out
+the "meaning" of the expression.
+
+</P>
+<P>
+Evaluation is done recursively.  We write code to evaluate simple
+expressions, and use recursion to break down complicated expressions
+into simple parts. 
+
+</P>
+<P>
+I'll show a simple evaluator for simple arithmetic expressions,
+like a four-function calculator, which you can use like this, given
+the read-eval-print-loop above:
+
+</P>
+
+<PRE>
+Scheme&#62;(repl math-eval)  ; start up read-eval-print loop w/arithmetic eval
+repl&#62;1
+1
+repl&#62;(plus 1 2)
+3
+repl&#62;(times (plus 1 3) (minus 4 2))
+8
+</PRE>
+
+<P>
+As before, the read-eval-print-loop reads what you type at the
+<CODE>repl&#62;</CODE> prompt as an s-expression, and calls <CODE>math-eval</CODE>.
+
+</P>
+<P>
+Here's the main dispatch routine of the interpreter, which figures
+out what kind of expression it's given, and either evaluates it
+trivially or calls <CODE>math-eval-combo</CODE> to help:
+
+</P>
+
+<PRE>
+(define (math-eval expr)
+  (cond ;; self-evaluating object?  (we only handle numbers)
+        ((number? expr)
+         expr)
+        ;; compound expression? (we only handle two-arg combinations)
+        (else
+         (math-eval-combo expr))))
+</PRE>
+
+<P>
+ 
+<A NAME="IDX133"></A>
+
+</P>
+<P>
+First <CODE>math-eval</CODE> checks the expression to see if it's something
+simple that it can evaluate straightforwardly, without recursion.
+
+</P>
+<P>
+The only simple expressions in our language are numeric literals,
+so <CODE>math-eval</CODE> just uses the predicate <CODE>number?</CODE> to test
+whether the expression is a number.  If so, it just returns that value.
+(Voila!  We've implemented self-evaluating literals.)
+
+</P>
+<P>
+If the expression is not simple, it's supposed to be an arithmetic
+expression with an operator and two operands, represented as a three
+element list.  (This is the subset of Scheme's combinations that
+this interpreter can handle.)  In this case, <CODE>math-eval</CODE> calls
+<CODE>math-eval-combo</CODE>.
+
+</P>
+
+<PRE>
+(define (math-eval-combo expr)
+  (let ((operator-name (car expr))
+        (arg1 (math-eval (cadr expr)))
+        (arg2 (math-eval (caddr expr))))
+     (cond ((eq? operator-name 'plus)
+            (+ arg1 arg2))
+           ((eq? operator-name 'minus)
+            (- arg1 arg2))
+           ((eq? operator-name 'times)
+            (* arg1 arg2))
+           ((eq? operator-name 'quotient)
+            (/ arg1 arg2))
+           (else
+            (error "Invalid operation in expr:" expr)))))
+</PRE>
+
+<P>
+<CODE>math-eval-combo</CODE> handles a combination (math operation) by
+calling <CODE>math-eval</CODE> recursively to evaluate the arguments, 
+checking which operator is used in the expression, and calling
+the appropriate Scheme procedure to perform the actual operation.
+
+</P>
+
+
+<H4><A NAME="SEC140" HREF="schintro_toc.html#SEC140">Comments on the Arithmetic Evaluator</A></H4>
+
+<P>
+<A NAME="IDX134"></A>
+<A NAME="IDX135"></A>
+
+</P>
+<P>
+The 4-function arithmetic evaluator is very simple, but it demonstrates
+several important principles of Scheme programming and programming
+language implementation.
+
+</P>
+<P>
+<A NAME="IDX136"></A>
+
+<UL>
+<LI><EM>Recursive style and Nested Lists.</EM>
+
+Notice that an arithemetic expression is represented as an
+s-expression that may be a 3-element list.  If it's a three-element
+list, that list is made up of three objects (pairs), but we
+essentially treat it as a single conceptual object--a node in
+a parse tree of arithemetic expressions.  The overall recursive
+structure of the evaluator is based on this conceptual tree, not
+on the details of the lists' internal structure.   We <EM>don't</EM>
+need recursion to traverse the lists, because the lists are of
+fixed length and we can extract the relevant fields using 
+<CODE>car</CODE>, <CODE>cadr</CODE>, and <CODE>caddr</CODE>.   We are essentially
+treating the lists as three-element structures.
+
+This kind of recursion is extremely common in Scheme--nested lists
+are far more common than "pair trees."
+
+As in the earlier examples of recursion over lists and pair trees,
+the main recursive procedure can accept pointers to either
+interior nodes (lists representing compound expressions), <EM>or</EM>
+leaves of the tree.  Either counts as an expression.  Dynamic typing
+lets us implement this straightforwardly, so that our recursion doesn't
+have to "bottom out" until we actually hit a leaf.   Things would
+be more complicated in C or Pascal, which don't allow a procedure
+to accept an argument that may be either a list <EM>or</EM> a
+number.\footnote{In C or Pascal, we could represent all of the
+  nodes in the expression tree as variant records (in C, "unions")
+  containing an integer <EM>or</EM> a list.  We don't need to do that
+  in  Scheme, because in Scheme <EM>every</EM> variable's type is really
+  a kind of variant record--it can hold a (pointer to a) number <EM>or</EM>
+  a (pointer to a) pair <EM>or</EM> a (pointer to) anything else.
+  
+  C is particularly problematic for this style of programming,
+  because even if we bite the bullet and always define a variant
+  record type, the variant records are <EM>untagged</EM>.  C doesn't
+  automatically keep track of which variant a particular record
+  represents--e.g., a leaf or nonleaf--and you must code this
+  yourself by adding a tag field, and setting and checking it
+  appropriately.  In effect, you must implement dynamic typing
+  yourself, every time.}
+ 
+It <EM>is</EM> possible to do Scheme-style recursion straightforwardly
+in some statically-typed languages, notably ML and Haskell.  These
+<EM>polymorphic</EM> languages allow you to declare <EM>disjoint union</EM>
+types.  A disjoint union is an "any of these" type--you can say that an
+argument will be of some type <EM>or</EM> some other type.
+ 
+In Scheme, the language only supports one very general kind of
+disjoint union type:  pointer to anything.  However, we usually
+think of data structure definitions as disjoint unions.
+
+As usual, we can characterize what an <EM>arithmetic expression</EM>
+recursively.  It is either a numeric literal (the base case)
+<EM>or</EM> a three-element "node" whose first "field" is
+an operator symbol and whose second and third "fields" are
+<EM>arithmetic expressions</EM>.  Also as usual, this recursive
+characterization is what dictates the recursive structure of
+the solution---<EM>not</EM> the details of how nodes are implemented.
+(The overall structure of recursion over trees would be the same
+if the interior nodes were arrays or records, rather than linear
+lists.)
+
+The conceptual "disjoint union" of leaves and interior nodes
+is what tells us we need a two-branch conditional in <CODE>math-eval</CODE>.
+
+It is important to realize that in Scheme, we usually discriminate
+between cases at <EM>edges</EM> in the graph, i.e., the pointers,
+rather than focusing on the <EM>nodes</EM>.  Conceptually, the type
+of the <CODE>expr</CODE> argument is <EM>an edge in the expression graph</EM>,
+which may point to either a leaf node or an interior node.  We
+apply <CODE>math-eval</CODE> to each edge, uniformly, and it discriminates
+between the cases.  We don't examine the object it points to and
+decide <EM>whether</EM> to make the recursive call--we always do
+the recursive call, and sort out the cases in the callee.
+
+<LI><EM>Primitive expressions and operations.</EM>
+
+In looking at any interpreter, it's important to notice which
+operations are <EM>primitive</EM>, and which are <EM>compound</EM>.
+Primitive operations are "built into" the interpreter, but
+the interpreter allows you to construct more complicated
+operations in terms of those.
+
+In <CODE>math-eval</CODE>, the primitive operations are addition,
+subtraction, multiplication, and division.  We "snarf"
+these operations from the underlying Scheme system, in which
+we're implementing our little four-function calculator.
+We don't implement addition, but we do dispatch to this
+built-in addition operation.
+
+On the other hand, compound expressions are not built-in.
+The interpreter doesn't have a special case for each
+particular kind of expression--e.g., there's no code
+to add 4 to 5.  We allow users to combine expressions
+by arbitrarily nesting them, and support an effectively infinite
+number of possible expressions.
+
+Later, I'll show more advanced interpreters that support
+more kinds of primitive expressions--not just numeric literals
+and more kinds of primitive operations--not just four
+arithmetic functions.   I'll also show how a more advanced
+interpreter can support more different ways of combining
+the primitive expressions.
+
+<LI><EM>Flexibility</EM>
+
+You may be wondering why we'd bother to write <CODE>math-eval</CODE>,
+since it essentially implements a small subset of Scheme,
+and we've already got Scheme.
+
+One reason for implementing your own interpreter is
+<EM>flexibility</EM>.  You can change the features of the
+language by making minor changes to the interpreter.
+
+For example, it is trivial to modify <CODE>math-eval</CODE>
+to evaluate infix expressions rather than postfix
+expressions.  (That is, with the operator in the middle,
+e.g., <CODE>(10 plus (3 times 2))</CODE>.  All we have to do
+is change the two lines where the operator and the
+first operand are extracted from a compound expression.
+We just swap the <CODE>car</CODE> and <CODE>cadr</CODE>, so that
+we treat the second element of the list as the operand
+and the first element as the operator.
+
+ 
+
+<LI><EM></EM>
+
+</UL>
+
+<P>
+ 
+
+
+<H3><A NAME="SEC141" HREF="schintro_toc.html#SEC141">A Note on Snarfing and Bootstrapping</A></H3>
+
+<P>
+<A NAME="IDX137"></A>
+
+</P>
+<P>
+Two concepts worth knowing about language implementation are <EM>snarfing</EM>
+and <EM>bootstrapping</EM>.  Snarfing is "stealing" features from an
+underlying language when implementing a new language.  Bootstrapping
+is the process of building a language implementation (or other system)
+by using the system to extend itself.
+
+</P>
+
+
+<H4><A NAME="SEC142" HREF="schintro_toc.html#SEC142">Snarfing</A></H4>
+
+<P>
+Our example interpreter implements Scheme in Scheme, but we could have
+written it in C or assembly language.  If we had done that, we'd have to
+have written our own read-eval-print loop, and a bunch of not-very
+interesting code to read from the keyboard input and create data structures,
+display data structures on the screen, and so on.  Instead, we "cheated" by
+snarfing those features from the underlying Scheme system--we
+simply took features from the underlying Scheme system and used them
+in the language we interpret.   Our tiny language requires you to type
+in Scheme lists, because it uses the Scheme read-eval-print to get
+its input and call the interpreter.  If we wanted to, we could provide
+our own reading routine that reads things in a different syntax.  For
+example, we might read input that uses square brackets instead of
+parentheses for nesting, or which uses infix operators instead of
+prefix operators.
+
+</P>
+<P>
+There are some features we <EM>didn't</EM> just snarf, though--we wrote our
+own evaluation procedure which controls recursive evaluation.  For
+example, we <EM>use</EM> basic Scheme arithemetic procedures to implement
+individual arithmetic operations, but we don't simply <EM>snarf</EM> them:
+the interpreter recognizes arithmetic operations in its input language,
+and maps them onto procedure calls in the underlying language.  We
+can change our language by changing those mappings: for example,
+we could use the symbols <CODE>+</CODE>, <CODE>-</CODE>, <CODE>*</CODE>, and <CODE>/</CODE>
+to represent those operations, as Scheme does, or whatever we choose
+for the language we're interpreting.
+Or we could use the same names, but implement the operations differently.
+(For example, we might have our own arithmetic routines that allow
+a representation of infinity, and do something reasonable for division
+by zero.)
+
+</P>
+<P>
+We also use recursion to implement recursion, when we recursively call
+<CODE>eval</CODE>).  But since we coded that recursion explicitly, we can easily
+change it, and do something different.  Our arithmetic expressions don't
+have to have the same recursive structure as Scheme expressions.
+
+</P>
+<P>
+We could also implement recursion ourselves.  As written, our tiny 
+interpreter uses Scheme's activation "stack" to implement it's own
+stack--each recursive call to <CODE>eval</CODE> implements a recursive call
+in our input language.  We didn't have to do this.  We could have
+implemented our own stack as a data structure, and written our interpreter
+as a simple non-recursive loop.  That would be a little tedious, however,
+so we don't bother. 
+
+</P>
+<P>
+What counts as "snarfing"?  The term is a good one, but not clearly
+defined.  If we call Scheme's <CODE>read</CODE> rather than using our own
+reader, we clearly just snarf the Scheme reader, but we've done something
+a little different with recursion.  We've done something very different
+with the interpretation of operator names. 
+
+</P>
+
+
+<H4><A NAME="SEC143" HREF="schintro_toc.html#SEC143">Bootstrapping and Cross-compiling</A></H4>
+
+<P>
+<A NAME="IDX138"></A>
+<A NAME="IDX139"></A>
+
+</P>
+<P>
+Implementing a programming language well requires attention to the fine
+art of bootstrapping--how much of the system do you have to build
+"by hand" in some lower-level system, and how much can you build
+<EM>within the system itself</EM>, once you've got a little bit of it
+working.
+
+</P>
+<P>
+Most Scheme systems are written mostly in Scheme, and in fact it's
+possible (but not particularly fun) to implement a whole Scheme system
+in Scheme, even on a machine that doesn't have a Scheme system yet.
+
+</P>
+<P>
+How are these things possible?
+
+</P>
+<P>
+First, let's take the simple case, where you're willing to write a little
+code in another language.  You can write an interpreter for a small subset
+of Scheme in, say, C or assembler.  Then you can extend that little language
+by writing the rest of Scheme in Scheme--you just need a simple little
+subset to get started, and then things you need can be defined in terms
+of things you already have.  Writing an interpreter for a subset of Scheme
+in C is not hard--just a little tedious.  Then you can use <CODE>lambda</CODE>
+to create most of the rest of the procedures in terms of simpler
+procedures.  Interestingly, you can also implement most of the defining
+constructs and control constructs of Scheme in Scheme, by writing 
+<EM>macros</EM>, which we'll discuss later.
+
+</P>
+<P>
+You can start out this way even if you want your Scheme system to use
+a compiler.  You can write the compiler in Scheme, and use the interpreter
+to run the compiler and generate machine code.  Now you have a compiler for
+Scheme code, and can compile procedures so that they run faster than if you
+interpreted them.  You can take most of the Scheme code that you'd been
+interpreting, and use the compiler to create faster versions of them.
+You then replace the old (interpreted) versions with the new (compiled)
+versions, and the system is suddenly faster.
+
+</P>
+<P>
+Once the compiler works, you can <EM>compile the compiler</EM>, so that <EM>it</EM>
+runs faster.  After all, a compiler is just a program that takes source code
+as input and generates executable code--it's just a program that happens to
+operate on programs.  Now you're set--you have a compiler that can 
+compile Scheme code that you need to run, including itself, and you don't
+need the interpreter anymore.
+
+</P>
+<P>
+To get Scheme to work on a new system, without even needing an interpreter,
+you can <EM>cross-compile</EM>.  If you have Scheme working on one kind
+of machine, but want to run it on another, you can write your Scheme compiler
+in Scheme, and have it run on one machine but generate code for the new
+machine.  Then you can take the executable code it generates, copy it onto
+the new machine, and run it.
+
+</P>
+<P>
+Most Scheme systems are built using tricks like this.  For example, the
+RScheme system never had an interpreter at all.  Its compiler was initially
+run in a different Scheme system (Scheme-48) and used to compile most
+of RScheme itself.  This code was then used to run RScheme with no further
+assistance from another implementation. 
+
+</P>
+<P>
+The first Scheme system was built by writing a Scheme interpreter in
+Lisp,  <EM>[ or was it a compiler first? ... blah blah ... ]</EM>
+
+</P>
+
+<HR>
+Go to the <A HREF="schintro_1.html">first</A>, <A HREF="schintro_115.html">previous</A>, <A HREF="schintro_117.html">next</A>, <A HREF="schintro_143.html">last</A> section, <A HREF="schintro_toc.html">table of contents</A>.
+</BODY>
+</HTML>
