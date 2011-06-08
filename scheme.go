@@ -644,6 +644,36 @@ func (self *Vector) Eval (env Environment) Value {
 	panic ("not implemented")
 }
 
+/////////////////////////////////////////////////////////// Port /////
+
+type Port struct {
+}
+
+// Constructor
+
+func NewPort (args ...Any) Value {
+	panic ("not implemented")
+}
+
+// Predicate
+
+func IsPort (arg Value) bool {
+	_, is_port := arg.(*Port)
+	return is_port
+}
+
+// String representation
+
+func (self *Port) String () string {
+	panic ("not implemented")
+}
+
+// Evaluation
+
+func (self *Port) Eval (env Environment) Value {
+	panic ("not implemented")
+}
+
 //////////////////////////////////////////// Primitive procedure /////
 
 type PrimitiveProc struct {

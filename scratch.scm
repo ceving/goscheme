@@ -92,3 +92,11 @@ a
 (map (lambda (x)
        1)
      (list))
+
+(define hello "hello")
+((lambda (str)
+   (string-set! str 0 #\H)) hello)
+hello
+((lambda (str)
+   (string-set! str 0 #\H)) ((lambda () "hello")))
+(string #\h #\e #\l #\l #\o)
