@@ -16,6 +16,37 @@ func init () {
 	scm.Trace ("list", &scm.List)
 }
 
+func decode_utf8 (src []uint8) ([]uint32, bool) {
+	// Count characters
+	length := 0
+	for _, b := range src {
+		if b & 0x80 == 0 || b & 0xC0 == 0xC0 { length++ }
+	}
+	// Alloc buffer
+	dst := make([]uint32, length)
+	// Decode UTF8
+	for s, d := 0, 0; d < length; {
+		switch {
+		case src[s] & 0x80 == 0:
+			// ASCII
+			dst[d] = uint32(src[s]); s++ ; d++
+		case src[s] & 0xC0 == 0xC0:
+			if dst[d+1] & 0x80 == 0x80 {
+				// At least two bytes
+				if dst[d+2] & 0x80 == 0x80 {
+					// At least three bytes
+					if dst[d+3] & 0x80 == 0x80 {
+						// Four bytes
+					}
+				}
+			}
+		default:
+			return nil, false
+		}
+	}
+	return dst, true
+}
+
 func main () {
 	unspecified := scm.NewUnspecified()
 	fmt.Printf ("%#v\n", unspecified)

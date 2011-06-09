@@ -302,6 +302,46 @@ func (self *Complex) Eval (Environment) Value {
 
 type Char int32
 
+// Constructor
+
+func NewChar (char Any) Char {
+	var result Char
+	switch char.(type) {
+	case int:
+		result = Char(char.(int))
+	case int32:
+		result = Char(char.(int32))
+	case uint32:
+		result = Char(char.(uint32))
+	case string:
+		// decode string literal
+		panic ("not implemented")
+	case Char:
+		result = char.(Char)
+	default:
+		panic (fmt.Sprintf ("Can not convert %T to Char", char))
+	}
+	return result
+}
+
+// Predicate
+
+func IsChar (arg Value) bool {
+	_, is_char := arg.(Char)
+	return is_char
+}
+
+// String representation
+
+func (self Char) String () string {
+	return fmt.Sprintf ("%c", self)
+}
+
+// Evaluation
+
+func (self Char) Eval (Environment) Value {
+	return self
+}
 ///////////////////////////////////////////////////////// Symbol /////
 
 type Symbol string
