@@ -2,9 +2,11 @@ package main
 
 import (
 	//"big"
-    "fmt"
+    //"fmt"
 	//"container/list"
 	//"strconv"
+	"io"
+	"strings"
 	scm "./scheme"
 )
 
@@ -16,42 +18,7 @@ func init () {
 	scm.Trace ("list", &scm.List)
 }
 
-func decode_utf8 (src []uint8) ([]uint32, bool) {
-	// Count characters
-	length := 0
-	for _, b := range src {
-		if b & 0x80 == 0 || b & 0xC0 == 0xC0 { length++ }
-	}
-	// Alloc buffer
-	dst := make([]uint32, length)
-	// Decode UTF8
-	for s, d := 0, 0; d < length; {
-		switch {
-		case src[s] & 0x80 == 0:
-			// ASCII
-			dst[d] = uint32(src[s]); s++ ; d++
-		case src[s] & 0xC0 == 0xC0:
-			if dst[d+1] & 0x80 == 0x80 {
-				// At least two bytes
-				if dst[d+2] & 0x80 == 0x80 {
-					// At least three bytes
-					if dst[d+3] & 0x80 == 0x80 {
-						// Four bytes
-					}
-				}
-			}
-		default:
-			return nil, false
-		}
-	}
-	return dst, true
-}
-
-func main () {
-	unspecified := scm.NewUnspecified()
-	fmt.Printf ("%#v\n", unspecified)
-	fmt.Printf ("%#v\n", scm.IsInteger(unspecified))
-
+func do_tests () {
 	// create a list of three pairs: (+ 1 2) or (+ . (1 . (2 . ())))
 	a := scm.NewPair (scm.NewSymbol ("+"), scm.NewPair (1, scm.NewPair (2, scm.NewEmpty())))
 	println (a.String())
@@ -104,4 +71,41 @@ func main () {
 	// Eval: (a)
 	scm.NewList(scm.NewSymbol("a")).Eval(env)
 	println()
+}
+
+type ParseError struct {
+	error string
+	reason interface{}
+}
+
+func (self ParseError) String () {
+	return self.error
+}
+
+type Error interface {
+	String () string
+	Reason () string
+}
+
+func parse_boolean (reader io.RuneReader) (bool, Error) {
+	c0, _, err := reader.ReadRune()
+	if err != nil { 
+		return false, ParseError{"Can not read hash", err}
+	}
+	if c0 != '#' { 
+		return false, ParseError{fmt.Sprintf("Got %c expecting '#'", c), nil}
+	}
+	c1, _, err := read.ReadRune()
+	if err != nil { 
+		return false, ParseError{"Can not read t/f", err}
+	}
+	switch c1 {
+	case 't': return true, nil
+	case 'f': return false, nil
+	}
+	return ParseError{
+}
+
+func main () {
+	fmt.Printf ("%v\n", parse_boolean (strings.NewReader ("#f")))
 }

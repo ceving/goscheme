@@ -62,7 +62,9 @@ func NewValue (arg Any) Value {
 	case complex64, complex128:
 		result = NewComplex (arg)
 	case string:
-		result = NewString (arg.(string))
+		result = NewSymbol (arg.(string))
+	case []uint8:
+		result = NewMutableString (arg.([]uint8))
 	case bool:
 		result = NewBoolean (arg)
 	default:
@@ -86,34 +88,36 @@ func NewProcedure (arg Value) Procedure {
 
 //////////////////////////////////////////////////// Unspecified /////
 
-type Unspecified struct {}
+type Unspecified struct{}
 
 // Constructor
 
-func NewUnspecified () *Unspecified {
-	return nil
+func NewUnspecified () Unspecified {
+	return struct{}{}
 }
 
 // Predicate
 
 func IsUnspecified (arg Value) bool {
-	_, is_unspecified := arg.(*Unspecified)
+	_, is_unspecified := arg.(Unspecified)
 	return is_unspecified
 }
 
 // String representation
 
-func (self *Unspecified) String () string {
+func (self Unspecified) String () string {
 	return "#<unspecified>"
 }
 
 // Evaluation
 
-func (self *Unspecified) Eval (Environment) Value {
+func (self Unspecified) Eval (Environment) Value {
 	return self
 }
 
 //////////////////////////////////////////////////////// Integer /////
+
+// FIXME: unrole struct
 
 type Integer struct {
 	value big.Int
@@ -173,6 +177,8 @@ func (self *Integer) Eval (Environment) Value {
 
 /////////////////////////////////////////////////////// Rational /////
 
+// FIXME: unrole struct
+
 type Rational struct {
 	value big.Rat
 }
@@ -212,6 +218,8 @@ func (self *Rational) Eval (Environment) Value {
 }
 
 ////////////////////////////////////////////////////////// Real //////
+
+// FIXME: unrole struct
 
 type Real struct {
     value float64
@@ -254,6 +262,8 @@ func (self *Real) Eval (Environment) Value {
 }
 
 /////////////////////////////////////////////////////// Complex //////
+
+// FIXME: unrole struct
 
 type Complex struct {
 	value complex128
@@ -388,63 +398,67 @@ func (self Symbol) Is (str Any) bool {
 
 /////////////////////////////////////////////// Immutable String /////
 
-type ImmutableString string
+type ImmutableString utf8.String
 
 // Constructor
 
-func NewImmutableString (name string) ImmutableString {
-	return ImmutableString(name)
+func NewImmutableString (str string) *ImmutableString {
+	return (*ImmutableString)(utf8.NewString(str))
 }
 
 // Predicate
 
 func IsImmutableString (arg Value) bool {
-	_, is_immutablestring := arg.(ImmutableString)
+	_, is_immutablestring := arg.(*ImmutableString)
 	return is_immutablestring
 }
 
 // String representation
 
-func (self ImmutableString) String () string {
-	return string(self)
+func (self *ImmutableString) String () string {
+	return (*utf8.String)(self).String()
 }
 
 // Evaluation
 
-func (self ImmutableString) Eval (env Environment) Value {
+func (self *ImmutableString) Eval (env Environment) Value {
 	return self
 }
 
 ///////////////////////////////////////////////// Mutable String /////
 
-type String struct {
-	value *utf8.String
-}
+type MutableString []uint32
 
 // Constructor
 
-func NewString (value string) *String {
-	var result String
-	result.value = utf8.NewString(value)
-	return &result
+func NewMutableString (arg Any) (result MutableString) {
+	switch arg.(type) {
+	case string:
+		result = MutableString(DecodeUtf8([]uint8(arg.(string))))
+	case []uint8:
+		result = MutableString(DecodeUtf8(arg.([]uint8)))
+	default:
+		panic (fmt.Sprintf ("Can not convert %T to MutableString", arg))
+	}
+	return result
 }
 
 // Predicate
 
 func IsString (arg Value) bool {
-	_, is_string := arg.(*String)
-	return is_string
+	_, is_mutablestring := arg.(*MutableString)
+	return is_mutablestring
 }
 
 // String representation
 
-func (self *String) String () string {
-	return strconv.Quote(self.value.String())
+func (self MutableString) String () string {
+	return strconv.Quote(string(EncodeUtf8([]uint32(self))))
 }
 
 // Evaluation
 
-func (self *String) Eval (Environment) Value {
+func (self MutableString) Eval (Environment) Value {
 	return self
 }
 
@@ -502,30 +516,30 @@ func IsTrue (arg Value) bool {
 
 ///////////////////////////////////////////////////// Empty list /////
 
-type Empty struct {}
+type Empty struct{}
 
 // Constructor
 
-func NewEmpty () *Empty {
-	return nil
+func NewEmpty () Empty {
+	return struct{}{}
 }
 
 // Predicate
 
 func IsEmpty (arg Value) bool {
-	_, is_empty := arg.(*Empty)
+	_, is_empty := arg.(Empty)
 	return is_empty
 }
 
 // String representation
 
-func (self *Empty) String () string {
+func (self Empty) String () string {
 	return "()"
 }
 
 // Evaluation
 
-func (self *Empty) Eval (Environment) Value {
+func (self Empty) Eval (Environment) Value {
 	return self
 }
 
@@ -692,7 +706,7 @@ func ListLength (arg Value) (length int, is_list bool) {
 		length++
 		arg = pair.cdr
 	}
-	if _, is_empty := arg.(*Empty); is_empty {
+	if _, is_empty := arg.(Empty); is_empty {
 		is_list = true
 	}
 	return
@@ -862,6 +876,8 @@ func (self *CompoundProc) Apply (args []Value) (result Value) {
 }
 
 ////////////////////////////////////////// Top Level Environment /////
+
+// TODO: unrole struct
 
 type ToplevelEnv struct {
 	current map [Symbol] Value
@@ -1041,6 +1057,61 @@ func indent (step int, level int) string {
 	}
 	return string(str)
 } 
+
+// Decode UTF8 to UCS4.
+
+func DecodeUtf8 (src []uint8) []uint32 {
+	// Count characters
+	length := 0
+	for _, b := range src {
+		if b & 0x80 == 0 || b & 0xC0 == 0xC0 { length++ }
+	}
+	// Alloc buffer
+	dst := make([]uint32, length)
+	// Decode UTF8
+	for s, d := 0, 0; d < length; d++ {
+		switch {
+		case src[s] & 0x80 == 0:
+			 // ASCII
+			dst[d] = uint32(src[s]);
+			s += 1
+		case src[s] & 0xE0 == 0xC0 && 
+				src[s+1] & 0xC0 == 0x80:
+			// Two bytes
+			dst[d] = 
+				uint32(src[s] & 0x1F) << 6 | 
+				uint32(src[s+1] & 0x3F)
+			s += 2
+		case src[s] & 0xF0 == 0xE0 &&
+				src[s+1] & 0xC0 == 0x80 &&
+				src[s+2] & 0xC0 == 0x80:
+			// Three bytes
+			dst[d] = 
+				(uint32(src[s]) & 0x0F << 6 | 
+				uint32(src[s+1]) & 0x3F) << 6 |
+				uint32(src[s+2]) & 0x3F
+			s += 3
+		case src[s] & 0xF8 == 0xF0 &&
+				src[s+1] & 0xC0 == 0x80 &&
+				src[s+2] & 0xC0 == 0x80:
+			// Four bytes
+			dst[d] = 
+				((uint32(src[s]) & 0x07 << 6 |
+				uint32(src[s+1]) & 0x3F) << 6 |
+				uint32(src[s+2]) & 0x3F) << 6 |
+				uint32(src[s+3]) & 0x3F
+			s += 4
+		default:
+			// Invalid encoding
+			panic ("invalid encoding")
+		}
+	}
+	return dst
+}
+
+func EncodeUtf8 (src []uint32) []uint8 {
+	panic ("not implemented")
+}
 
 ///////////////////////////////////////////////// Function trace /////
 
