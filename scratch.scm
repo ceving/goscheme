@@ -100,3 +100,8 @@ hello
 ((lambda (str)
    (string-set! str 0 #\H)) ((lambda () "hello")))
 (string #\h #\e #\l #\l #\o)
+
+(list #\null(list 1))
+
+(char->integer #\x7F)
+

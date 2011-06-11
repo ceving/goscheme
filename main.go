@@ -2,10 +2,11 @@ package main
 
 import (
 	//"big"
-    //"fmt"
+	"bufio"
+    "fmt"
 	//"container/list"
 	//"strconv"
-	"io"
+	//"io"
 	"strings"
 	scm "./scheme"
 )
@@ -73,39 +74,14 @@ func do_tests () {
 	println()
 }
 
-type ParseError struct {
-	error string
-	reason interface{}
-}
-
-func (self ParseError) String () {
-	return self.error
-}
-
-type Error interface {
-	String () string
-	Reason () string
-}
-
-func parse_boolean (reader io.RuneReader) (bool, Error) {
-	c0, _, err := reader.ReadRune()
-	if err != nil { 
-		return false, ParseError{"Can not read hash", err}
-	}
-	if c0 != '#' { 
-		return false, ParseError{fmt.Sprintf("Got %c expecting '#'", c), nil}
-	}
-	c1, _, err := read.ReadRune()
-	if err != nil { 
-		return false, ParseError{"Can not read t/f", err}
-	}
-	switch c1 {
-	case 't': return true, nil
-	case 'f': return false, nil
-	}
-	return ParseError{
-}
-
 func main () {
-	fmt.Printf ("%v\n", parse_boolean (strings.NewReader ("#f")))
+	fmt.Println("start")
+
+	v, e := scm.Parse(bufio.NewReader(strings.NewReader(`#\n`)))
+	fmt.Printf("v: %v e: %v\n", v, e)
+
+	v, e = scm.Parse(bufio.NewReader(strings.NewReader(`#\x27`)))
+	fmt.Printf("v: %v e: %v\n", v, e)
+
+	fmt.Println("exit")
 }

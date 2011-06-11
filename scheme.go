@@ -21,7 +21,10 @@ package scheme
 
 import (
 	"big"
+	//"bytes"
 	"fmt"
+	//"io"
+	"os"
 	"strconv"
 	"utf8"
 )
@@ -46,6 +49,11 @@ type Environment interface {
 	Define (Symbol, Value)
 	Set (Symbol, Value)
 	Get (Symbol) Value
+}
+
+type RuneReader interface {
+	ReadRune() (rune int, size int, err os.Error)
+	UnreadRune() os.Error
 }
 
 // Constructor
@@ -299,7 +307,7 @@ func IsComplex (arg Value) bool {
 // String representation
 
 func (self *Complex) String () string {
-	return fmt.Sprintf ("%g", self.value)
+	return fmt.Sprintf ("%g", complex128(self.value))
 }
 
 // Evaluation
@@ -310,7 +318,7 @@ func (self *Complex) Eval (Environment) Value {
 
 ////////////////////////////////////////////////////// Character /////
 
-type Char int32
+type Char uint32
 
 // Constructor
 
@@ -344,7 +352,25 @@ func IsChar (arg Value) bool {
 // String representation
 
 func (self Char) String () string {
-	return fmt.Sprintf ("%c", self)
+	c := int(self)
+	switch c {
+	case '\a': return `#\alarm`
+	case '\b': return `#\backspace`
+	case '\t': return `#\tab`
+	case '\n': return `#\newline`
+	case '\r': return `#\return`
+	case ' ':  return `#\space`
+	case 0:    return `#\null`
+	case 27:   return `#\escape`
+	case 127:  return `#\delete`
+	}
+	if c < 32 {
+		return fmt.Sprintf(`#\x%02X`, c)
+	}
+	if c < 128 {
+		return fmt.Sprintf(`#\%c`, c)
+	}
+	return fmt.Sprintf(`#\x%04X`, c)
 }
 
 // Evaluation
@@ -1025,6 +1051,90 @@ func (self *ProcedureEnv) Get (name Symbol) Value {
 		}
 	}
 	return self.parent.Get(name)
+}
+
+///////////////////////////////////////////////////////// Parser /////
+
+type StringError struct {
+	broken string
+	reason Error
+}
+
+func (self *StringError) String () string {
+	if self.reason == nil {
+		return fmt.Sprintf ("Error: %s", self.broken)
+	}
+	return fmt.Sprintf ("Error: %s because %s", 
+		self.broken, self.reason.String())
+}
+
+type Error interface {
+	String () string
+}
+
+func ParseError (broken string, reason Error) (Value, Error) {
+	error := StringError{broken, reason}
+	return nil, &error
+}
+
+func is_delimiter (ch int) bool {
+	return ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r' ||
+		ch == '(' || ch == ')' || ch == '#' || ch == '\'' || ch == ','
+}
+
+func Parse (reader RuneReader) (Value, Error) {
+	var c int
+	var l int
+	var e Error
+	var buffer []int = make([]int, 64)
+	
+	if c, _, e = reader.ReadRune(); e != nil {
+		return ParseError("Can not read rune", e)
+	}
+	switch c {
+	case '#':
+		if c, _, e = reader.ReadRune(); e != nil {
+			return ParseError("Can not read rune", e)
+		}
+		switch c {
+		case 't': return Boolean(true), nil
+		case 'f': return Boolean(false), nil
+		case '\\':
+			buffer = buffer[0:0]
+			for {
+				if c, l, e = reader.ReadRune(); e != nil {
+					if e == os.EOF { break }
+					return ParseError("Can not read rune", e)
+				}
+				if l > 1 { 
+					return ParseError(fmt.Sprintf(
+						"Invalid Unicode char in character name %c", c), nil)
+				}
+				if is_delimiter (c) { reader.UnreadRune (); break }
+				buffer = append(buffer, c)
+			}
+			if len(buffer) == 1 {
+				return Char(buffer[0]), nil
+			}
+			switch string(buffer) {
+			case "null":      return Char(0), nil
+			case "alarm":     return Char('\a'), nil
+			case "backspace": return Char('\b'), nil
+			case "tab":       return Char('\t'), nil
+			case "newline":   return Char('\n'), nil
+			case "return":    return Char('\r'), nil
+			case "escape":    return Char(27), nil
+			case "space":     return Char(' '), nil
+			case "delete":    return Char(127), nil
+			default: 
+				return ParseError(fmt.Sprintf(
+					"Unknown character name '%s'", string(buffer)), nil)
+			}
+		default: return ParseError(fmt.Sprintf("Unsupported # char %d", c), nil)  
+		}
+	default: return ParseError(fmt.Sprintf("Unsupported char %c", c), nil)  
+	}
+	return ParseError("Internal error", nil)
 }
 
 /////////////////////////////////////////////// Helper functions /////
