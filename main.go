@@ -77,11 +77,9 @@ func do_tests () {
 func main () {
 	fmt.Println("start")
 
-	v, e := scm.Parse(bufio.NewReader(strings.NewReader(`#\n`)))
-	fmt.Printf("v: %v e: %v\n", v, e)
-
-	v, e = scm.Parse(bufio.NewReader(strings.NewReader(`#\x27`)))
-	fmt.Printf("v: %v e: %v\n", v, e)
+	for _, s := range []string{`#\n`, `#\xb`, `#\x27`, `#\x00A9`, `#\x1D5BA`, `#\xffffffff`, "", "("} {
+		fmt.Println(scm.ReadToken(bufio.NewReader(strings.NewReader(s))))
+	}
 
 	fmt.Println("exit")
 }

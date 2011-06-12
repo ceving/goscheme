@@ -105,3 +105,6 @@ hello
 
 (char->integer #\x7F)
 
+(with-input-from-string ""
+  (lambda ()
+    (read)))

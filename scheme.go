@@ -29,7 +29,7 @@ import (
 	"utf8"
 )
 
-//////////////////////////////////////////////////// Basic Types /////
+///////////////////////////////////////////////////// Interfaces /////
 
 type Any interface {}
 
@@ -94,74 +94,67 @@ func NewProcedure (arg Value) Procedure {
 }
 */
 
-//////////////////////////////////////////////////// Unspecified /////
+///////////////////////////////////////////////// Error chaining /////
+
+type Error interface {
+	String () string
+}
+
+type Failure struct {
+	error string
+	fault Error
+}
+
+func (self Failure) String () string {
+	if self.fault == nil {
+		return self.error
+	}
+	return fmt.Sprintf ("%s (%s)", self.error, self.fault.String())
+}
+
+///////////////////////////////////////////////////// Null types /////
 
 type Unspecified struct{}
+func NewUnspecified () Unspecified { return struct{}{} }
+func IsUnspecified (arg Value) bool { _, is := arg.(Unspecified); return is }
+func (self Unspecified) String () string { return "#<unspecified>" }
+func (self Unspecified) Eval (Environment) Value { return self }
 
-// Constructor
+type Empty struct{}
+func NewEmpty () Empty { return struct{}{} }
+func IsEmpty (arg Value) bool { _, is := arg.(Empty); return is }
+func (self Empty) String () string { return "()" }
+func (self Empty) Eval (Environment) Value { return self }
 
-func NewUnspecified () Unspecified {
-	return struct{}{}
-}
-
-// Predicate
-
-func IsUnspecified (arg Value) bool {
-	_, is_unspecified := arg.(Unspecified)
-	return is_unspecified
-}
-
-// String representation
-
-func (self Unspecified) String () string {
-	return "#<unspecified>"
-}
-
-// Evaluation
-
-func (self Unspecified) Eval (Environment) Value {
-	return self
-}
+type Eof struct{}
+func NewEof () Eof { return struct{}{} }
+func IsEof (arg Value) bool { _, is := arg.(Eof); return is }
+func (self Eof) String () string { return "#<eof>" }
+func (self Eof) Eval (Environment) Value { return self }
 
 //////////////////////////////////////////////////////// Integer /////
 
-// FIXME: unrole struct
-
-type Integer struct {
-	value big.Int
-}
+type Integer big.Int
 
 // Constructor
 
 func NewInteger (arg Any) *Integer {
-	var result Integer
+	var result big.Int
 	switch arg.(type) {
 	default:
 		panic (fmt.Sprintf ("Can not convert %T to Integer", arg))
 	case *big.Int:
-		result.value.Set(arg.(*big.Int))
+		result.Set(arg.(*big.Int))
 	case int:
-		result.value.SetInt64(int64(arg.(int)))
-	case int8:
-		result.value.SetInt64(int64(arg.(int8)))
-	case uint8:
-		result.value.SetInt64(int64(arg.(uint8)))
-	case int16:
-		result.value.SetInt64(int64(arg.(int16)))
-	case uint16:
-		result.value.SetInt64(int64(arg.(uint16)))
-	case int32:
-		result.value.SetInt64(int64(arg.(int32)))
-	case uint32:
-		result.value.SetInt64(int64(arg.(uint32)))
+		result.SetInt64(int64(arg.(int)))
 	case int64:
-		result.value.SetInt64(arg.(int64))
+		result.SetInt64(arg.(int64))
 	case uint64:
-		result.value.SetString(strconv.Uitoa64(arg.(uint64)), 0)
+		result.SetString(strconv.Uitoa64(arg.(uint64)), 0)
 	case string:
-		result.value.SetString(arg.(string), 0)
+		result.SetString(arg.(string), 0)
 	}
-	return &result
+	return (*Integer)(&result)
 }
 
 // Predicate
@@ -174,7 +167,7 @@ func IsInteger (arg Value) bool {
 // String representation
 
 func (self *Integer) String () string {
-	return self.value.String()
+	return (*big.Int)(self).String()
 }
 
 // Evaluation
@@ -352,7 +345,7 @@ func IsChar (arg Value) bool {
 // String representation
 
 func (self Char) String () string {
-	c := int(self)
+	c := uint32(self)
 	switch c {
 	case '\a': return `#\alarm`
 	case '\b': return `#\backspace`
@@ -365,12 +358,12 @@ func (self Char) String () string {
 	case 127:  return `#\delete`
 	}
 	if c < 32 {
-		return fmt.Sprintf(`#\x%02X`, c)
+		return fmt.Sprintf(`#\x%X`, c)
 	}
 	if c < 128 {
 		return fmt.Sprintf(`#\%c`, c)
 	}
-	return fmt.Sprintf(`#\x%04X`, c)
+	return fmt.Sprintf(`#\x%0X`, c)
 }
 
 // Evaluation
@@ -384,8 +377,16 @@ type Symbol string
 
 // Constructor
 
-func NewSymbol (name string) Symbol {
-	return Symbol(name)
+func NewSymbol (name Any) (result Symbol) {
+	switch name.(type) {
+	case string:
+		result = Symbol(name.(string))
+	case int:
+		result = Symbol(string(name.(int)))
+	default:
+		panic(fmt.Sprintf("Can not convert %T to Symbol", name))
+	}
+	return
 }
 
 // Predicate
@@ -538,35 +539,6 @@ func IsFalse (arg Value) bool {
 
 func IsTrue (arg Value) bool {
 	return !IsFalse(arg)
-}
-
-///////////////////////////////////////////////////// Empty list /////
-
-type Empty struct{}
-
-// Constructor
-
-func NewEmpty () Empty {
-	return struct{}{}
-}
-
-// Predicate
-
-func IsEmpty (arg Value) bool {
-	_, is_empty := arg.(Empty)
-	return is_empty
-}
-
-// String representation
-
-func (self Empty) String () string {
-	return "()"
-}
-
-// Evaluation
-
-func (self Empty) Eval (Environment) Value {
-	return self
 }
 
 /////////////////////////////////////////////////////////// Pair /////
@@ -1055,86 +1027,90 @@ func (self *ProcedureEnv) Get (name Symbol) Value {
 
 ///////////////////////////////////////////////////////// Parser /////
 
-type StringError struct {
-	broken string
-	reason Error
-}
-
-func (self *StringError) String () string {
-	if self.reason == nil {
-		return fmt.Sprintf ("Error: %s", self.broken)
-	}
-	return fmt.Sprintf ("Error: %s because %s", 
-		self.broken, self.reason.String())
-}
-
-type Error interface {
-	String () string
-}
-
-func ParseError (broken string, reason Error) (Value, Error) {
-	error := StringError{broken, reason}
-	return nil, &error
-}
-
-func is_delimiter (ch int) bool {
-	return ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r' ||
-		ch == '(' || ch == ')' || ch == '#' || ch == '\'' || ch == ','
-}
-
-func Parse (reader RuneReader) (Value, Error) {
+func ReadToken (reader RuneReader) Value {
 	var c int
-	var l int
+
+	is_whitespace := func () bool {
+		return c == ' ' || c == '\n' || c == '\t' || c == '\r'
+	}
+	is_delimiter := func (ch int) bool {
+		return is_whitespace() ||
+			c == '(' || c == ')' || c == '#' || c == '\'' || c == ','
+	}
+
 	var e Error
 	var buffer []int = make([]int, 64)
 	
-	if c, _, e = reader.ReadRune(); e != nil {
-		return ParseError("Can not read rune", e)
+	for {
+		if c, _, e = reader.ReadRune(); e != nil {
+			if e == os.EOF { return NewEof() }
+			panic(Failure{error:"Can not read rune", fault:e})
+		}
+		if !is_whitespace() { break }
 	}
 	switch c {
+	case '(', ')':
+		return NewSymbol(c)
 	case '#':
 		if c, _, e = reader.ReadRune(); e != nil {
-			return ParseError("Can not read rune", e)
+			panic(Failure{error:"Can not read rune", fault:e})
 		}
 		switch c {
-		case 't': return Boolean(true), nil
-		case 'f': return Boolean(false), nil
+		case 't': return Boolean(true)
+		case 'f': return Boolean(false)
 		case '\\':
 			buffer = buffer[0:0]
 			for {
-				if c, l, e = reader.ReadRune(); e != nil {
+				if c, _, e = reader.ReadRune(); e != nil {
 					if e == os.EOF { break }
-					return ParseError("Can not read rune", e)
-				}
-				if l > 1 { 
-					return ParseError(fmt.Sprintf(
-						"Invalid Unicode char in character name %c", c), nil)
+					panic(Failure{error:"Can not read rune", fault:e})
 				}
 				if is_delimiter (c) { reader.UnreadRune (); break }
 				buffer = append(buffer, c)
 			}
 			if len(buffer) == 1 {
-				return Char(buffer[0]), nil
+				return Char(buffer[0])
 			}
 			switch string(buffer) {
-			case "null":      return Char(0), nil
-			case "alarm":     return Char('\a'), nil
-			case "backspace": return Char('\b'), nil
-			case "tab":       return Char('\t'), nil
-			case "newline":   return Char('\n'), nil
-			case "return":    return Char('\r'), nil
-			case "escape":    return Char(27), nil
-			case "space":     return Char(' '), nil
-			case "delete":    return Char(127), nil
-			default: 
-				return ParseError(fmt.Sprintf(
-					"Unknown character name '%s'", string(buffer)), nil)
+			case "null":      return Char(0)
+			case "alarm":     return Char('\a')
+			case "backspace": return Char('\b')
+			case "tab":       return Char('\t')
+			case "newline":   return Char('\n')
+			case "return":    return Char('\r')
+			case "escape":    return Char(27)
+			case "space":     return Char(' ')
+			case "delete":    return Char(127)
 			}
-		default: return ParseError(fmt.Sprintf("Unsupported # char %d", c), nil)  
+			if 2 <= len(buffer) && buffer[0] == 'x' && len(buffer) <= 9 {
+				i, e := HexToUint32 (buffer[1:])
+				if e != nil {
+					panic(Failure{error:"Invalid hex char", fault:e})
+				}
+				return Char(i)
+			}
+			panic(Failure{error:fmt.Sprintf(
+					"Unknown character name '%s'", string(buffer))})
+		default:
+			panic(Failure{error:fmt.Sprintf("Unsupported # char %d", c)})  
 		}
-	default: return ParseError(fmt.Sprintf("Unsupported char %c", c), nil)  
+	case '-':
+		panic("not implemented")
+		goto number
+		goto symbol
+	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9': 
+	number:
+		panic("not implemented")
+	default:
+	symbol:
+		panic("not implemented")
 	}
-	return ParseError("Internal error", nil)
+	panic(Failure{error:"Internal error"})
+	return nil
+}
+
+func ReadExpr (reader RuneReader) Value {
+	panic("not implemented")
 }
 
 /////////////////////////////////////////////// Helper functions /////
@@ -1221,6 +1197,26 @@ func DecodeUtf8 (src []uint8) []uint32 {
 
 func EncodeUtf8 (src []uint32) []uint8 {
 	panic ("not implemented")
+}
+
+// Convert a hex string to uint64.
+
+func HexToUint32 (hex []int) (i uint32, err Error) {
+	var n int8 = 8
+	var d uint8
+	var c int
+	for _, c = range hex {
+		if n--; n < 0 {
+			return 0, Failure{error:
+				"Can not convert more than 8 nibbles to uint64"} }
+		if d = uint8(c) - '0';       0 <= d && d <=  9 { goto ok }
+		if d = uint8(c) - 'A' + 10; 10 <= d && d <= 15 { goto ok }
+		if d = uint8(c) - 'a' + 10; 10 <= d && d <= 15 { goto ok }
+		return 0, Failure{error:fmt.Sprintf("Invalid hex char '%c'", c)}
+	ok:
+		i = i << 4 | uint32(d)
+	}
+	return
 }
 
 ///////////////////////////////////////////////// Function trace /////
