@@ -357,10 +357,7 @@ func (self Char) String () string {
 	case 27:   return `#\escape`
 	case 127:  return `#\delete`
 	}
-	if c < 32 {
-		return fmt.Sprintf(`#\x%X`, c)
-	}
-	if c < 128 {
+	if 32 <= c && c <= 127 {
 		return fmt.Sprintf(`#\%c`, c)
 	}
 	return fmt.Sprintf(`#\x%0X`, c)
