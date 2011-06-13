@@ -75,11 +75,12 @@ func do_tests () {
 }
 
 func main () {
-	fmt.Println("start")
+	fmt.Println("main: start")
 
-	for _, s := range []string{`#\n`, `#\xb`, `#\x27`, `#\x00A9`, `#\x1D5BA`, `#\xffffffff`, "", "("} {
-		fmt.Println(scm.ReadToken(bufio.NewReader(strings.NewReader(s))))
+	for _, s := range []string{`#\n`, `#\xb`, `#\x27`, `#\x00A9`, `#\x1D5BA`, 
+		`#\xffffffff`, "", "#t", "()", `(#\a . #\b)`, `(#t #f #\null)`} {
+		fmt.Println(scm.Parse(bufio.NewReader(strings.NewReader(s))))
 	}
 
-	fmt.Println("exit")
+	fmt.Println("main: exit")
 }

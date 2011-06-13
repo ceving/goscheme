@@ -108,3 +108,7 @@ hello
 (with-input-from-string ""
   (lambda ()
     (read)))
+
+'(1 . 2 3)
+
+(number? 1/2)

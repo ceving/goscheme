@@ -1024,30 +1024,68 @@ func (self *ProcedureEnv) Get (name Symbol) Value {
 
 ///////////////////////////////////////////////////////// Parser /////
 
-func ReadToken (reader RuneReader) Value {
+func is_whitespace (ch int) bool {
+	return ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r'
+}
+
+func is_delimiter (ch int) bool {
+	return is_whitespace(ch) ||
+		ch == '(' || ch == ')' || ch == '#' || ch == '\'' || ch == ','
+}
+
+func Parse (reader RuneReader) Value {
 	var c int
-
-	is_whitespace := func () bool {
-		return c == ' ' || c == '\n' || c == '\t' || c == '\r'
-	}
-	is_delimiter := func (ch int) bool {
-		return is_whitespace() ||
-			c == '(' || c == ')' || c == '#' || c == '\'' || c == ','
-	}
-
+	var eof bool
 	var e Error
-	var buffer []int = make([]int, 64)
 	
-	for {
-		if c, _, e = reader.ReadRune(); e != nil {
-			if e == os.EOF { return NewEof() }
-			panic(Failure{error:"Can not read rune", fault:e})
+	read_rune_skipping_whitespace := func () {
+		for {
+			if c, _, e = reader.ReadRune(); e != nil {
+				if e == os.EOF { eof = true; return }
+				panic(Failure{error:"Can not read rune", fault:e})
+			}
+			if !is_whitespace(c) { return }
 		}
-		if !is_whitespace() { break }
 	}
+
+	var buffer []int = make([]int, 64)
+
+	read_rune_skipping_whitespace()
+	if eof { return NewEof() }
+
 	switch c {
-	case '(', ')':
-		return NewSymbol(c)
+	case '(':
+		var list, pair *Pair
+		for {
+			read_rune_skipping_whitespace()
+			if eof { panic(Failure{error:"EOF while reading list"}) }
+			switch c {
+			case '.':
+				pair.cdr = Parse(reader)
+			case ')':
+				if pair == nil {
+					return NewEmpty()
+				} else {
+					if pair.cdr == nil {
+						pair.cdr = NewEmpty()
+					}
+					return list
+				}
+			default:
+				if pair == nil {
+					list = &Pair{}
+					pair = list
+				} else {
+					if pair.cdr != nil {
+						panic(Failure{error:"invalid cdr"})
+					}
+					pair.cdr = &Pair{}
+					pair = pair.cdr.(*Pair)
+				}
+				reader.UnreadRune()
+				pair.car = Parse(reader)
+			}
+		}
 	case '#':
 		if c, _, e = reader.ReadRune(); e != nil {
 			panic(Failure{error:"Can not read rune", fault:e})
@@ -1059,7 +1097,10 @@ func ReadToken (reader RuneReader) Value {
 			buffer = buffer[0:0]
 			for {
 				if c, _, e = reader.ReadRune(); e != nil {
-					if e == os.EOF { break }
+					if e == os.EOF {
+						// EOF terminates character
+						break
+					}
 					panic(Failure{error:"Can not read rune", fault:e})
 				}
 				if is_delimiter (c) { reader.UnreadRune (); break }
@@ -1088,8 +1129,11 @@ func ReadToken (reader RuneReader) Value {
 			}
 			panic(Failure{error:fmt.Sprintf(
 					"Unknown character name '%s'", string(buffer))})
+		case '(':
+			// vector
+			panic("vector not implemented")
 		default:
-			panic(Failure{error:fmt.Sprintf("Unsupported # char %d", c)})  
+			panic(Failure{error:fmt.Sprintf("Unsupported sharp identifier %d", c)})  
 		}
 	case '-':
 		panic("not implemented")
@@ -1100,14 +1144,10 @@ func ReadToken (reader RuneReader) Value {
 		panic("not implemented")
 	default:
 	symbol:
-		panic("not implemented")
+		panic(fmt.Sprintf("default: catching %c", c))
 	}
 	panic(Failure{error:"Internal error"})
 	return nil
-}
-
-func ReadExpr (reader RuneReader) Value {
-	panic("not implemented")
 }
 
 /////////////////////////////////////////////// Helper functions /////
@@ -1205,7 +1245,7 @@ func HexToUint32 (hex []int) (i uint32, err Error) {
 	for _, c = range hex {
 		if n--; n < 0 {
 			return 0, Failure{error:
-				"Can not convert more than 8 nibbles to uint64"} }
+				"Can not convert more than 8 nibbles to uint32"} }
 		if d = uint8(c) - '0';       0 <= d && d <=  9 { goto ok }
 		if d = uint8(c) - 'A' + 10; 10 <= d && d <= 15 { goto ok }
 		if d = uint8(c) - 'a' + 10; 10 <= d && d <= 15 { goto ok }
