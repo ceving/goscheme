@@ -139,3 +139,10 @@ hello
 (the-continuation)
 
 (eq? 2 (+ 1 1))
+
+
+(let* ((yin
+        ((lambda (cc) (display #\@) cc) (call/cc (lambda (c) c))))
+       (yang
+        ((lambda (cc) (display #\*) cc) (call/cc (lambda (c) c)))))
+  (yin yang))
