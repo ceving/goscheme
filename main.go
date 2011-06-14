@@ -19,7 +19,7 @@ func init () {
 	scm.Trace ("list", &scm.List)
 }
 
-func do_tests () {
+func test_value_creation () {
 	// create a list of three pairs: (+ 1 2) or (+ . (1 . (2 . ())))
 	a := scm.NewPair (scm.NewSymbol ("+"), scm.NewPair (1, scm.NewPair (2, scm.NewEmpty())))
 	println (a.String())
@@ -74,13 +74,27 @@ func do_tests () {
 	println()
 }
 
-func main () {
-	fmt.Println("main: start")
-
+func test_parser () {
 	for _, s := range []string{`#\n`, `#\xb`, `#\x27`, `#\x00A9`, `#\x1D5BA`, 
-		`#\xffffffff`, "", "#t", "()", `(#\a . #\b)`, `(#t #f #\null)`} {
+		`#\xffffffff`, "", "#t", "()", `(#\a . #\b)`, `(#t #f #\null)`, 
+		`(#t . (#f . #t))`, `(#t.(#f.(#t.())))`, `1`, `define`} {
 		fmt.Println(scm.Parse(bufio.NewReader(strings.NewReader(s))))
 	}
+}
 
+func test_parse_and_eval () {
+	env := scm.NewToplevelEnv()
+	env.Init ()
+	for _, s := range []string{`#\n`, `#\xb`, `#\x27`, `#\x00A9`, `#\x1D5BA`, 
+		`#\xffffffff`, "", "#t", "()", "(define a 1)", "a", "((lambda (x) x) 42)"} {
+		fmt.Println(scm.Parse(bufio.NewReader(strings.NewReader(s))).Eval(env))
+	}
+}
+
+func main () {
+	fmt.Println("main: start")
+	test_value_creation()
+	test_parser()
+	test_parse_and_eval()
 	fmt.Println("main: exit")
 }

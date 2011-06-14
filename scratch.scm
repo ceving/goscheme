@@ -112,3 +112,30 @@ hello
 '(1 . 2 3)
 
 (number? 1/2)
+(number? +1)
+(number? -1)
+
+
+(define the-continuation #f)
+
+(define call/cc call-with-current-continuation)
+
+(define (test)
+  (let ((i 0))
+                                        ; call/cc calls its first function argument, passing
+                                        ; a continuation variable representing this point in
+                                        ; the program as the argument to that function.
+                                        ;
+                                        ; In this case, the function argument assigns that
+                                        ; continuation to the variable the-continuation.
+                                        ;
+    (call/cc (lambda (k) (set! test k)))
+                                        ;
+                                        ; The next time the-continuation is called, we start here.
+    (set! i (+ i 1))
+    i))
+
+(test)
+(the-continuation)
+
+(eq? 2 (+ 1 1))

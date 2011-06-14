@@ -141,10 +141,6 @@ type Integer big.Int
 func NewInteger (arg Any) *Integer {
 	var result big.Int
 	switch arg.(type) {
-	default:
-		panic (fmt.Sprintf ("Can not convert %T to Integer", arg))
-	case *big.Int:
-		result.Set(arg.(*big.Int))
 	case int:
 		result.SetInt64(int64(arg.(int)))
 	case int64:
@@ -153,6 +149,8 @@ func NewInteger (arg Any) *Integer {
 		result.SetString(strconv.Uitoa64(arg.(uint64)), 0)
 	case string:
 		result.SetString(arg.(string), 0)
+	default:
+		panic (fmt.Sprintf ("Can not convert %T to Integer", arg))
 	}
 	return (*Integer)(&result)
 }
@@ -1047,7 +1045,6 @@ func Parse (reader RuneReader) Value {
 			if !is_whitespace(c) { return }
 		}
 	}
-
 	var buffer []int = make([]int, 64)
 
 	read_rune_skipping_whitespace()
@@ -1135,19 +1132,32 @@ func Parse (reader RuneReader) Value {
 		default:
 			panic(Failure{error:fmt.Sprintf("Unsupported sharp identifier %d", c)})  
 		}
-	case '-':
-		panic("not implemented")
-		goto number
-		goto symbol
-	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9': 
-	number:
-		panic("not implemented")
+	case '+', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		buffer = buffer[0:0]
+		buffer = append(buffer, c)
+		for {
+			if c, _, e = reader.ReadRune(); e != nil {
+				if e == os.EOF { break }
+				panic(Failure{error:"Can not read number rune", fault:e})
+			}
+			if is_delimiter (c) { reader.UnreadRune(); break }
+			buffer = append(buffer, c)
+		}
+		return NewInteger(string(buffer))
 	default:
-	symbol:
-		panic(fmt.Sprintf("default: catching %c", c))
+		buffer = buffer[0:0]
+		buffer = append(buffer, c)
+		for {
+			if c, _, e = reader.ReadRune(); e != nil {
+				if e == os.EOF { break }
+				panic(Failure{error:"Can not read symbol rune", fault:e})
+			}
+			if is_delimiter (c) { reader.UnreadRune(); break }
+			buffer = append(buffer, c)
+		}
+		return NewSymbol(string(buffer))
 	}
-	panic(Failure{error:"Internal error"})
-	return nil
+	panic(Failure{error:"Internal parse error"})
 }
 
 /////////////////////////////////////////////// Helper functions /////
